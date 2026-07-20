@@ -1,0 +1,18 @@
+# Runtime dependencies — versions pinned from PyPI (queried 2026-07-20)
+# Install: pip install -r requirements.txt
+
+fastapi==0.139.2
+uvicorn[standard]==0.51.0
+pydantic==2.13.4
+pydantic-settings==2.14.2
+sqlmodel==0.0.39
+sqlalchemy[asyncio]==2.0.51
+aiomysql==0.3.2
+pymysql==1.2.0
+cryptography==49.0.0
+alembic==1.18.5
+dramatiq[redis]==2.2.0
+redis==8.0.1
+httpx==0.28.1
+python-multipart==0.0.32
+email-validator==2.3.0

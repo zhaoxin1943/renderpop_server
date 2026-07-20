@@ -1,0 +1,52 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "renderpop-server"
+version = "0.1.0"
+description = "RenderPop async FastAPI backend (api / service / repo)"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+  "fastapi>=0.139.2,<1",
+  "uvicorn[standard]>=0.51.0,<1",
+  "pydantic>=2.13.4,<3",
+  "pydantic-settings>=2.14.2,<3",
+  "sqlmodel>=0.0.39,<1",
+  "sqlalchemy[asyncio]>=2.0.51,<3",
+  "aiomysql>=0.3.2,<1",
+  "pymysql>=1.2.0,<2",
+  "cryptography>=49.0.0,<50",
+  "alembic>=1.18.5,<2",
+  "dramatiq[redis]>=2.2.0,<3",
+  "redis>=8.0.1,<9",
+  "httpx>=0.28.1,<1",
+  "python-multipart>=0.0.32,<1",
+  "email-validator>=2.3.0,<3",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=9.1.1,<10",
+  "pytest-asyncio>=1.4.0,<2",
+  "ruff>=0.15.22,<1",
+  "httpx>=0.28.1,<1",
+]
+
+[project.scripts]
+renderpop-api = "app.main:run"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["."]
