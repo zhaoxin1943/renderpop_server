@@ -4,6 +4,7 @@ from sqlalchemy import Column, Date, Integer, String, UniqueConstraint
 from sqlmodel import Field
 
 from app.models.base import TimestampedModel
+from app.models.enums import UsageFeature, UsageSubjectType, sa_str_enum
 
 
 class DailyUsageCounter(TimestampedModel, table=True):
@@ -20,11 +21,13 @@ class DailyUsageCounter(TimestampedModel, table=True):
         ),
     )
 
-    # USER | VISITOR | IP_RISK_BUCKET
-    subject_type: str = Field(sa_column=Column(String(32), nullable=False))
+    subject_type: UsageSubjectType = Field(
+        sa_column=Column(sa_str_enum(UsageSubjectType), nullable=False)
+    )
     subject_id: str = Field(sa_column=Column(String(64), nullable=False, index=True))
-    # FAST_IMAGE
-    feature: str = Field(sa_column=Column(String(64), nullable=False, index=True))
+    feature: UsageFeature = Field(
+        sa_column=Column(sa_str_enum(UsageFeature, length=64), nullable=False, index=True)
+    )
     usage_date: date = Field(sa_column=Column(Date, nullable=False, index=True))
     used_count: int = Field(
         default=0,

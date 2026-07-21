@@ -18,6 +18,7 @@ from botocore.client import BaseClient
 from botocore.exceptions import BotoCoreError, ClientError
 
 from app.core.config import Settings
+from app.models.enums import TransferStatus
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,7 @@ PRESIGNED_GET_EXPIRES = 3600
 
 @dataclass(frozen=True)
 class TransferResult:
-    status: str  # SUCCEEDED | FAILED | SKIPPED
+    status: TransferStatus
     storage_key: str | None = None
     mime_type: str | None = None
     byte_size: int | None = None
@@ -83,11 +84,11 @@ class S3Storage:
     ) -> TransferResult:
         """Download a temporary provider URL and put the object in private S3."""
         if not source_url:
-            return TransferResult(status="FAILED", error="empty source_url")
+            return TransferResult(status=TransferStatus.FAILED, error="empty source_url")
         if not self.configured:
             logger.warning("S3 not configured; skipping transfer task=%s", task_id)
             return TransferResult(
-                status="SKIPPED",
+                status=TransferStatus.SKIPPED,
                 source_url=source_url,
                 error="S3 credentials or bucket not configured",
             )
@@ -97,7 +98,7 @@ class S3Storage:
         except Exception as exc:
             logger.exception("download failed task=%s url=%s", task_id, source_url[:120])
             return TransferResult(
-                status="FAILED",
+                status=TransferStatus.FAILED,
                 source_url=source_url,
                 error=f"download failed: {exc}",
             )
@@ -122,13 +123,13 @@ class S3Storage:
         except (BotoCoreError, ClientError, OSError) as exc:
             logger.exception("S3 put failed task=%s key=%s", task_id, key)
             return TransferResult(
-                status="FAILED",
+                status=TransferStatus.FAILED,
                 source_url=source_url,
                 error=f"s3 put failed: {exc}",
             )
 
         return TransferResult(
-            status="SUCCEEDED",
+            status=TransferStatus.SUCCEEDED,
             storage_key=key,
             mime_type=mime,
             byte_size=len(body),
@@ -155,7 +156,12 @@ class S3Storage:
             ServerSideEncryption="AES256",
         )
 
-    async def presign_get(self, storage_key: str, *, expires_in: int = PRESIGNED_GET_EXPIRES) -> str:
+    async def presign_get(
+        self,
+        storage_key: str,
+        *,
+        expires_in: int = PRESIGNED_GET_EXPIRES,
+    ) -> str:
         if not self.configured:
             raise RuntimeError("S3 not configured")
         return await asyncio.to_thread(

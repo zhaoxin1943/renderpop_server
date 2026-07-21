@@ -20,10 +20,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.commerce import SANDBOX_PRODUCT_SEEDS
 from app.core.db import dispose_engine, get_session_factory
 from app.models.base import new_id
+from app.models.enums import PaymentProvider, ProductEnvironment
 from app.models.product import Product
 
 
-async def upsert_products(session: AsyncSession, environment: str, seeds) -> None:
+async def upsert_products(
+    session: AsyncSession, environment: ProductEnvironment, seeds
+) -> None:
     for seed in seeds:
         stmt = select(Product).where(
             Product.environment == environment,
@@ -39,7 +42,7 @@ async def upsert_products(session: AsyncSession, environment: str, seeds) -> Non
             row.credits_granted = seed.credits_granted
             row.amount_minor = seed.amount_minor
             row.currency = seed.currency
-            if environment == "sandbox":
+            if environment == ProductEnvironment.SANDBOX:
                 # Only auto-fill provider id for sandbox; live is manual
                 row.provider_product_id = seed.provider_product_id
             row.is_active = True
@@ -47,7 +50,7 @@ async def upsert_products(session: AsyncSession, environment: str, seeds) -> Non
         else:
             provider_id = (
                 seed.provider_product_id
-                if environment == "sandbox"
+                if environment == ProductEnvironment.SANDBOX
                 else f"REPLACE_ME_{seed.code}"
             )
             session.add(
@@ -62,9 +65,9 @@ async def upsert_products(session: AsyncSession, environment: str, seeds) -> Non
                     credits_granted=seed.credits_granted,
                     amount_minor=seed.amount_minor,
                     currency=seed.currency,
-                    provider="dodo",
+                    provider=PaymentProvider.DODO,
                     provider_product_id=provider_id,
-                    is_active=environment == "sandbox",
+                    is_active=environment == ProductEnvironment.SANDBOX,
                 )
             )
             print(f"created {environment}/{seed.code}")
@@ -73,8 +76,8 @@ async def upsert_products(session: AsyncSession, environment: str, seeds) -> Non
 async def main() -> None:
     factory = get_session_factory()
     async with factory() as session:
-        await upsert_products(session, "sandbox", SANDBOX_PRODUCT_SEEDS)
-        await upsert_products(session, "live", SANDBOX_PRODUCT_SEEDS)
+        await upsert_products(session, ProductEnvironment.SANDBOX, SANDBOX_PRODUCT_SEEDS)
+        await upsert_products(session, ProductEnvironment.LIVE, SANDBOX_PRODUCT_SEEDS)
         await session.commit()
     await dispose_engine()
     print("done")

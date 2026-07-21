@@ -10,6 +10,15 @@ from urllib.parse import urlparse
 from app.core.config import Settings
 from app.core.errors import NotFound, ValidationFailed
 from app.models.base import new_id
+from app.models.enums import (
+    MembershipPlan,
+    OrderStatus,
+    OrderType,
+    PaymentEventStatus,
+    PaymentProvider,
+    ProductType,
+    SubscriptionStatus,
+)
 from app.models.order import Order
 from app.models.payment_event import PaymentEvent
 from app.models.subscription import Subscription
@@ -103,13 +112,17 @@ class BillingService:
         snapshot = {
             "code": product.code,
             "name": product.name,
-            "product_type": product.product_type,
-            "plan_code": product.plan_code,
+            "product_type": product.product_type.value
+            if isinstance(product.product_type, ProductType)
+            else product.product_type,
+            "plan_code": product.plan_code.value if product.plan_code else None,
             "credits_granted": product.credits_granted,
             "amount_minor": product.amount_minor,
             "currency": product.currency,
             "provider_product_id": product.provider_product_id,
-            "environment": product.environment,
+            "environment": product.environment.value
+            if hasattr(product.environment, "value")
+            else product.environment,
             "config_version": product.config_version,
         }
 
@@ -119,14 +132,14 @@ class BillingService:
             order = Order(
                 id=new_id(),
                 user_id=user_id,
-                order_type=product.product_type,
-                status="PENDING",
+                order_type=OrderType(product.product_type),
+                status=OrderStatus.PENDING,
                 product_code=product.code,
                 product_id=product.id,
                 product_snapshot=snapshot,
                 amount_minor=product.amount_minor,
                 currency=product.currency,
-                payment_provider="dodo",
+                payment_provider=PaymentProvider.DODO,
                 idempotency_key=idempotency_key,
             )
             await self._orders.add(order)
@@ -176,34 +189,34 @@ class BillingService:
             or f"{event_type}:{data.get('payment_id') or data.get('subscription_id') or new_id()}"
         )
 
-        existing = await self._orders.get_event("dodo", event_id)
-        if existing and existing.status == "PROCESSED":
+        existing = await self._orders.get_event(PaymentProvider.DODO, event_id)
+        if existing and existing.status == PaymentEventStatus.PROCESSED:
             return DodoWebhookResponse(ok=True, duplicate=True)
 
         if existing is None:
             event = PaymentEvent(
                 id=new_id(),
-                provider="dodo",
+                provider=PaymentProvider.DODO,
                 event_id=event_id,
                 event_type=event_type or "unknown",
-                status="PROCESSING",
+                status=PaymentEventStatus.PROCESSING,
                 payload=payload,
                 attempt_count=1,
             )
             await self._orders.add_event(event)
         else:
             event = existing
-            event.status = "PROCESSING"
+            event.status = PaymentEventStatus.PROCESSING
             event.attempt_count += 1
 
         try:
             await self._dispatch_event(event_type, data, event)
-            event.status = "PROCESSED"
+            event.status = PaymentEventStatus.PROCESSED
             event.processed_at = datetime.now(UTC)
             event.error_message = None
         except Exception as exc:
             logger.exception("webhook processing failed event=%s", event_id)
-            event.status = "FAILED"
+            event.status = PaymentEventStatus.FAILED
             event.error_message = str(exc)[:1000]
             await self._orders.session.flush()
             raise
@@ -225,23 +238,31 @@ class BillingService:
             "subscription.active",
             "subscription.renewed",
         ):
-            await self._on_subscription_active(data, metadata, renewed=event_type.endswith("renewed"))
+            await self._on_subscription_active(
+                data, metadata, renewed=event_type.endswith("renewed")
+            )
         elif event_type == "subscription.on_hold":
-            await self._on_subscription_status(data, "ON_HOLD")
+            await self._on_subscription_status(data, SubscriptionStatus.ON_HOLD)
         elif event_type == "subscription.cancelled":
-            await self._on_subscription_status(data, "CANCELED", cancel=True)
+            await self._on_subscription_status(
+                data, SubscriptionStatus.CANCELED, cancel=True
+            )
         elif event_type == "subscription.expired":
-            await self._on_subscription_status(data, "EXPIRED", ended=True)
+            await self._on_subscription_status(
+                data, SubscriptionStatus.EXPIRED, ended=True
+            )
         elif event_type == "subscription.failed":
-            await self._on_subscription_status(data, "FAILED", ended=True)
+            await self._on_subscription_status(
+                data, SubscriptionStatus.FAILED, ended=True
+            )
         else:
-            event.status = "IGNORED"
+            event.status = PaymentEventStatus.IGNORED
             logger.info("Ignoring webhook type=%s", event_type)
 
     async def _on_payment_succeeded(
         self, data: dict[str, Any], metadata: dict[str, Any]
     ) -> None:
-        """Credit packs: grant on payment.succeeded. Skip subscription payments (handled by sub events)."""
+        """Credit packs on payment.succeeded; membership credits via subscription events."""
         order_id = metadata.get("order_id")
         payment_id = str(data.get("payment_id") or data.get("id") or "")
         if not order_id:
@@ -253,18 +274,18 @@ class BillingService:
             logger.warning("order not found %s", order_id)
             return
 
-        if order.order_type == "SUBSCRIPTION":
+        if order.order_type == OrderType.SUBSCRIPTION:
             # Membership credits come from subscription.active/renewed
             order.provider_payment_id = payment_id or order.provider_payment_id
-            if order.status == "PENDING":
-                order.status = "PAID"
+            if order.status == OrderStatus.PENDING:
+                order.status = OrderStatus.PAID
                 order.paid_at = datetime.now(UTC)
             return
 
-        if order.status == "PAID":
+        if order.status == OrderStatus.PAID:
             return
 
-        order.status = "PAID"
+        order.status = OrderStatus.PAID
         order.paid_at = datetime.now(UTC)
         order.provider_payment_id = payment_id or order.provider_payment_id
 
@@ -296,7 +317,7 @@ class BillingService:
         user_id = metadata.get("user_id")
         order_id = metadata.get("order_id")
         product_code = metadata.get("product_code")
-        plan_code = None
+        plan_code: MembershipPlan | None = None
         credits_granted = 0
 
         order = await self._orders.get(order_id) if order_id else None
@@ -304,9 +325,11 @@ class BillingService:
             user_id = user_id or order.user_id
             product_code = product_code or order.product_code
             if order.product_snapshot:
-                plan_code = order.product_snapshot.get("plan_code")
+                raw_plan = order.product_snapshot.get("plan_code")
+                if raw_plan:
+                    plan_code = MembershipPlan(raw_plan)
                 credits_granted = int(order.product_snapshot.get("credits_granted") or 0)
-            order.status = "PAID"
+            order.status = OrderStatus.PAID
             order.paid_at = order.paid_at or datetime.now(UTC)
             order.provider_subscription_id = provider_sub_id
 
@@ -315,13 +338,13 @@ class BillingService:
             return
 
         # Resolve product if needed
-        if not plan_code and product_code:
+        if plan_code is None and product_code:
             product = await self._products.get_by_code(self._env(), product_code)
             if product:
                 plan_code = product.plan_code
                 credits_granted = product.credits_granted
 
-        plan_code = plan_code or "CREATOR"
+        plan_code = plan_code or MembershipPlan.CREATOR
 
         period_start = _parse_dt(
             data.get("current_period_start") or data.get("previous_billing_date")
@@ -330,24 +353,24 @@ class BillingService:
             data.get("current_period_end") or data.get("next_billing_date")
         )
 
-        sub = await self._subs.get_by_provider_id("dodo", provider_sub_id)
+        sub = await self._subs.get_by_provider_id(PaymentProvider.DODO, provider_sub_id)
         if sub is None:
             sub = Subscription(
                 id=new_id(),
                 user_id=user_id,
                 plan_code=plan_code,
-                product_code=product_code or f"{plan_code}_MONTHLY",
-                provider="dodo",
+                product_code=product_code or f"{plan_code.value}_MONTHLY",
+                provider=PaymentProvider.DODO,
                 provider_customer_id=str(data.get("customer_id") or "") or None,
                 provider_subscription_id=provider_sub_id,
-                status="ACTIVE",
+                status=SubscriptionStatus.ACTIVE,
                 current_period_start=period_start,
                 current_period_end=period_end,
                 last_synced_at=datetime.now(UTC),
             )
             await self._subs.add(sub)
         else:
-            sub.status = "ACTIVE"
+            sub.status = SubscriptionStatus.ACTIVE
             sub.plan_code = plan_code
             sub.current_period_start = period_start
             sub.current_period_end = period_end
@@ -373,7 +396,7 @@ class BillingService:
     async def _on_subscription_status(
         self,
         data: dict[str, Any],
-        status: str,
+        status: SubscriptionStatus,
         *,
         cancel: bool = False,
         ended: bool = False,
@@ -381,7 +404,7 @@ class BillingService:
         provider_sub_id = str(data.get("subscription_id") or data.get("id") or "")
         if not provider_sub_id:
             return
-        sub = await self._subs.get_by_provider_id("dodo", provider_sub_id)
+        sub = await self._subs.get_by_provider_id(PaymentProvider.DODO, provider_sub_id)
         if sub is None:
             return
         sub.status = status

@@ -16,6 +16,7 @@ from app.core.config import Settings, get_settings
 from app.core.db import get_db_session
 from app.providers.dodo import DodoClient
 from app.providers.runninghub import RunningHubClient
+from app.providers.s3 import S3Storage
 from app.repo.credit_repo import CreditRepo
 from app.repo.generation_repo import GenerationRepo
 from app.repo.health_repo import HealthRepo
@@ -24,6 +25,7 @@ from app.repo.product_repo import ProductRepo
 from app.repo.subscription_repo import SubscriptionRepo
 from app.repo.usage_repo import UsageRepo
 from app.repo.user_repo import UserRepo
+from app.service.auth_service import SESSION_COOKIE_NAME, AuthService
 from app.service.billing_service import BillingService
 from app.service.credit_service import CreditService
 from app.service.entitlement_service import EntitlementService
@@ -102,11 +104,16 @@ def get_entitlement_service(
     return EntitlementService(subs, usage, credits)
 
 
+def get_s3_storage(settings: SettingsDep) -> S3Storage:
+    return S3Storage(settings)
+
+
 def get_generation_service(
     gen_repo: GenerationRepoDep,
     credits: Annotated[CreditService, Depends(get_credit_service)],
     entitlements: Annotated[EntitlementService, Depends(get_entitlement_service)],
     settings: SettingsDep,
+    s3: Annotated[S3Storage, Depends(get_s3_storage)],
 ) -> GenerationService:
     return GenerationService(
         gen_repo,
@@ -114,6 +121,7 @@ def get_generation_service(
         entitlements,
         settings,
         rh=RunningHubClient(settings),
+        s3=s3,
     )
 
 
@@ -134,32 +142,37 @@ def get_billing_service(
     )
 
 
+def get_auth_service(users: UserRepoDep, settings: SettingsDep) -> AuthService:
+    return AuthService(users, settings)
+
+
 HealthServiceDep = Annotated[HealthService, Depends(get_health_service)]
 CreditServiceDep = Annotated[CreditService, Depends(get_credit_service)]
 EntitlementServiceDep = Annotated[EntitlementService, Depends(get_entitlement_service)]
 GenerationServiceDep = Annotated[GenerationService, Depends(get_generation_service)]
 BillingServiceDep = Annotated[BillingService, Depends(get_billing_service)]
+AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 
 
-# --- auth placeholder ---
+# --- auth ---
 
 
 async def get_optional_user_id(
     request: Request,
     settings: SettingsDep,
+    auth: AuthServiceDep,
     x_dev_user_id: Annotated[str | None, Header(alias="X-Dev-User-Id")] = None,
 ) -> str | None:
     """
-    Auth placeholder.
-
-    Development: pass X-Dev-User-Id (must exist in users table for write paths
-    that FK to users — create via dev endpoint).
-    Production Google session: TODO.
+    Resolve current user from session cookie, or X-Dev-User-Id in development.
     """
+    raw = request.cookies.get(SESSION_COOKIE_NAME)
+    user = await auth.resolve_session_token(raw)
+    if user is not None:
+        return user.id
+
     if settings.allow_dev_auth and settings.is_development and x_dev_user_id:
         return x_dev_user_id
-    # Future: read session cookie
-    _ = request
     return None
 
 
@@ -167,7 +180,10 @@ async def require_user_id(
     user_id: Annotated[str | None, Depends(get_optional_user_id)],
 ) -> str:
     if not user_id:
-        raise HTTPException(status_code=401, detail={"code": "AUTH_REQUIRED", "message": "Login required"})
+        raise HTTPException(
+            status_code=401,
+            detail={"code": "AUTH_REQUIRED", "message": "Login required"},
+        )
     return user_id
 
 

@@ -35,6 +35,7 @@ async def run_generation_job(job_id: str) -> None:
     """Submit task to RunningHub; poll until terminal if needed."""
     from app.core.config import get_settings
     from app.providers.runninghub import RunningHubClient
+    from app.providers.s3 import S3Storage
     from app.repo.credit_repo import CreditRepo
     from app.repo.generation_repo import GenerationRepo
     from app.repo.subscription_repo import SubscriptionRepo
@@ -57,16 +58,19 @@ async def run_generation_job(job_id: str) -> None:
                 ),
                 settings,
                 rh=RunningHubClient(settings),
+                s3=S3Storage(settings),
             )
+            from app.models.enums import TaskStatus
+
             task = await gen.submit_to_provider(job_id)
             # Poll a few times if still processing
-            if task.status == "PROCESSING" and task.provider_task_id:
+            if task.status == TaskStatus.PROCESSING and task.provider_task_id:
                 import asyncio
 
                 for _ in range(30):
                     await asyncio.sleep(2)
                     task = await gen.poll_provider(job_id)
-                    if task.status in ("SUCCEEDED", "FAILED", "CANCELED", "REJECTED"):
+                    if task.status in TaskStatus.terminal():
                         break
             await session.commit()
             logger.info("run_generation_job done job_id=%s status=%s", job_id, task.status)
@@ -80,6 +84,7 @@ async def run_generation_job(job_id: str) -> None:
 async def poll_generation_job(job_id: str) -> None:
     from app.core.config import get_settings
     from app.providers.runninghub import RunningHubClient
+    from app.providers.s3 import S3Storage
     from app.repo.credit_repo import CreditRepo
     from app.repo.generation_repo import GenerationRepo
     from app.repo.subscription_repo import SubscriptionRepo
@@ -102,6 +107,7 @@ async def poll_generation_job(job_id: str) -> None:
                 ),
                 settings,
                 rh=RunningHubClient(settings),
+                s3=S3Storage(settings),
             )
             task = await gen.poll_provider(job_id)
             await session.commit()

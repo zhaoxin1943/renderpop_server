@@ -5,8 +5,9 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.daily_usage import DailyUsageCounter
 from app.models.base import new_id
+from app.models.daily_usage import DailyUsageCounter
+from app.models.enums import UsageFeature, UsageSubjectType
 from app.repo.base import BaseRepo
 
 
@@ -17,9 +18,9 @@ class UsageRepo(BaseRepo):
     async def get_or_create_for_update(
         self,
         *,
-        subject_type: str,
+        subject_type: UsageSubjectType | str,
         subject_id: str,
-        feature: str,
+        feature: UsageFeature | str,
         usage_date: date,
         limit_snapshot: int,
     ) -> DailyUsageCounter:
@@ -55,9 +56,9 @@ class UsageRepo(BaseRepo):
     async def get(
         self,
         *,
-        subject_type: str,
+        subject_type: UsageSubjectType | str,
         subject_id: str,
-        feature: str,
+        feature: UsageFeature | str,
         usage_date: date,
     ) -> DailyUsageCounter | None:
         stmt = select(DailyUsageCounter).where(

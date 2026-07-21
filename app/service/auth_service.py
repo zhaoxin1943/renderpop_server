@@ -15,6 +15,7 @@ from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from app.core.config import Settings
 from app.core.errors import AuthRequired, ValidationFailed
 from app.models.base import new_id, utc_now
+from app.models.enums import IdentityProvider, RiskLevel, UserStatus
 from app.models.identity import Identity
 from app.models.session import Session
 from app.models.user import User
@@ -146,7 +147,7 @@ class AuthService:
         display_name = profile.get("name") or profile.get("given_name")
         avatar_url = profile.get("picture")
 
-        identity = await self._users.get_identity("google", subject)
+        identity = await self._users.get_identity(IdentityProvider.GOOGLE, subject)
         if identity:
             user = await self._users.get_by_id(identity.user_id)
             if user is None or user.deleted_at is not None or not user.is_active:
@@ -169,8 +170,8 @@ class AuthService:
                 email=email,
                 display_name=str(display_name)[:255] if display_name else None,
                 avatar_url=str(avatar_url)[:1024] if avatar_url else None,
-                status="ACTIVE",
-                risk_level="LOW",
+                status=UserStatus.ACTIVE,
+                risk_level=RiskLevel.LOW,
                 is_active=True,
             )
             await self._users.create(user)
@@ -184,7 +185,7 @@ class AuthService:
             Identity(
                 id=new_id(),
                 user_id=user.id,
-                provider="google",
+                provider=IdentityProvider.GOOGLE,
                 provider_subject=subject,
                 email=email,
             )
@@ -225,7 +226,7 @@ class AuthService:
         user = await self._users.get_by_id(row.user_id)
         if user is None or user.deleted_at is not None or not user.is_active:
             return None
-        if user.status != "ACTIVE":
+        if user.status != UserStatus.ACTIVE:
             return None
         return user
 

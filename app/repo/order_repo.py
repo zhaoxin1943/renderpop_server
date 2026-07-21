@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.enums import PaymentProvider
 from app.models.order import Order
 from app.models.payment_event import PaymentEvent
 from app.repo.base import BaseRepo
@@ -25,7 +26,9 @@ class OrderRepo(BaseRepo):
         await self.session.flush()
         return order
 
-    async def get_event(self, provider: str, event_id: str) -> PaymentEvent | None:
+    async def get_event(
+        self, provider: PaymentProvider | str, event_id: str
+    ) -> PaymentEvent | None:
         stmt = select(PaymentEvent).where(
             PaymentEvent.provider == provider,
             PaymentEvent.event_id == event_id,

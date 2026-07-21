@@ -4,6 +4,7 @@ from sqlalchemy import JSON, Column, DateTime, Integer, String, UniqueConstraint
 from sqlmodel import Field
 
 from app.models.base import CreatedModel
+from app.models.enums import PaymentEventStatus, PaymentProvider, sa_str_enum
 
 
 class PaymentEvent(CreatedModel, table=True):
@@ -25,13 +26,18 @@ class PaymentEvent(CreatedModel, table=True):
         max_length=36,
         nullable=True,
     )
-    provider: str = Field(sa_column=Column(String(32), nullable=False, index=True))
+    provider: PaymentProvider = Field(
+        sa_column=Column(sa_str_enum(PaymentProvider), nullable=False, index=True)
+    )
     event_id: str = Field(sa_column=Column(String(255), nullable=False))
     event_type: str = Field(sa_column=Column(String(128), nullable=False, index=True))
-    # RECEIVED | PROCESSING | PROCESSED | FAILED | IGNORED
-    status: str = Field(
-        default="RECEIVED",
-        sa_column=Column(String(32), nullable=False, server_default="RECEIVED", index=True),
+    status: PaymentEventStatus = Field(
+        default=PaymentEventStatus.RECEIVED,
+        sa_column=Column(
+            sa_str_enum(PaymentEventStatus),
+            nullable=False,
+            server_default=PaymentEventStatus.RECEIVED.value,
+        ),
     )
     payload: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     attempt_count: int = Field(

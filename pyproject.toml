@@ -23,6 +23,8 @@ dependencies = [
   "httpx>=0.28.1,<1",
   "python-multipart>=0.0.32,<1",
   "email-validator>=2.3.0,<3",
+  "boto3>=1.43.51,<2",
+  "itsdangerous>=2.2.0,<3",
 ]
 
 [project.optional-dependencies]

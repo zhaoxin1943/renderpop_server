@@ -6,11 +6,15 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from app.models.enums import PlanCode
 from app.schemas.credit import CreditBalanceResponse
 
 
 class UserSummary(BaseModel):
     id: str
+    email: str | None = None
+    display_name: str | None = None
+    avatar_url: str | None = None
 
 
 class MeResponse(BaseModel):
@@ -27,7 +31,7 @@ class FastImageQuotaResponse(BaseModel):
 
 
 class EntitlementsResponse(BaseModel):
-    plan: str
+    plan: PlanCode | str
     membership_active: bool
     current_period_end: datetime | None = None
     fast_image: FastImageQuotaResponse

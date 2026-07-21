@@ -32,7 +32,8 @@ class RunningHubClient:
             "Authorization": f"Bearer {self._key}",
         }
 
-    def build_fast_node_list(self, *, prompt: str, aspect_ratio: str) -> list[dict[str, str]]:
+    @staticmethod
+    def build_fast_node_list(*, prompt: str, aspect_ratio: str) -> list[dict[str, str]]:
         w, h = FAST_ASPECT_SIZES.get(aspect_ratio, FAST_ASPECT_SIZES["1:1"])
         return [
             {"nodeId": "76", "fieldName": "text", "fieldValue": prompt},
@@ -45,7 +46,8 @@ class RunningHubClient:
             },
         ]
 
-    def build_pro_node_list(self, *, prompt: str, aspect_ratio: str) -> list[dict[str, str]]:
+    @staticmethod
+    def build_pro_node_list( *, prompt: str, aspect_ratio: str) -> list[dict[str, str]]:
         return [
             {"nodeId": "3", "fieldName": "text", "fieldValue": prompt},
             {
@@ -65,7 +67,8 @@ class RunningHubClient:
             },
         ]
 
-    def input_params_for_fast(self, aspect_ratio: str) -> dict[str, Any]:
+    @staticmethod
+    def input_params_for_fast(aspect_ratio: str) -> dict[str, Any]:
         w, h = FAST_ASPECT_SIZES.get(aspect_ratio, FAST_ASPECT_SIZES["1:1"])
         return {
             "width": w,
@@ -74,7 +77,8 @@ class RunningHubClient:
             "app_id": RH_FAST_APP_ID,
         }
 
-    def input_params_for_pro(self, aspect_ratio: str) -> dict[str, Any]:
+    @staticmethod
+    def input_params_for_pro(aspect_ratio: str) -> dict[str, Any]:
         return {
             "quality": PRO_DEFAULT_QUALITY,
             "resolution": PRO_DEFAULT_RESOLUTION,
@@ -150,22 +154,4 @@ class RunningHubClient:
             return resp.json()
 
 
-async def transfer_result_to_s3_stub(
-    *,
-    source_url: str,
-    user_id: str | None,
-    task_id: str,
-) -> dict[str, Any]:
-    """
-    Placeholder for S3 transfer. Later: download RH URL (24h) and put object.
 
-    Returns metadata describing the pending transfer.
-    """
-    return {
-        "status": "PENDING_TRANSFER",
-        "source_url": source_url,
-        "storage_key": None,
-        "note": "S3 transfer not implemented yet",
-        "user_id": user_id,
-        "task_id": task_id,
-    }

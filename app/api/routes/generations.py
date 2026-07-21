@@ -45,7 +45,7 @@ async def create_generation(
             raise
 
     response.status_code = status.HTTP_202_ACCEPTED
-    return service.to_public(task)
+    return await service.to_public(task)
 
 
 async def _run_inline(task_id: str) -> None:
@@ -53,6 +53,7 @@ async def _run_inline(task_id: str) -> None:
     from app.core.config import get_settings
     from app.core.db import get_session_factory
     from app.providers.runninghub import RunningHubClient
+    from app.providers.s3 import S3Storage
     from app.repo.credit_repo import CreditRepo
     from app.repo.generation_repo import GenerationRepo
     from app.repo.subscription_repo import SubscriptionRepo
@@ -75,6 +76,7 @@ async def _run_inline(task_id: str) -> None:
                 ),
                 settings,
                 rh=RunningHubClient(settings),
+                s3=S3Storage(settings),
             )
             await gen.submit_to_provider(task_id)
             await session.commit()
@@ -90,7 +92,7 @@ async def get_generation(
     user_id: OptionalUserIdDep,
 ) -> GenerationTaskResponse:
     task = await service.get_task(job_id, user_id=user_id)
-    return service.to_public(task)
+    return await service.to_public(task)
 
 
 @router.post("/{job_id}/poll", response_model=GenerationTaskResponse)
@@ -102,4 +104,4 @@ async def poll_generation(
     """Manual poll of RunningHub (also used by worker)."""
     await service.get_task(job_id, user_id=user_id)
     task = await service.poll_provider(job_id)
-    return service.to_public(task)
+    return await service.to_public(task)

@@ -4,10 +4,11 @@ from sqlalchemy import BigInteger, Column, DateTime, Integer, String
 from sqlmodel import Field
 
 from app.models.base import SoftDeleteMixin, TimestampedModel
+from app.models.enums import AssetStatus, AssetType, sa_str_enum
 
 
 class Asset(SoftDeleteMixin, TimestampedModel, table=True):
-    """Private media in S3 (uploads, results). Transfer logic may be stubbed."""
+    """Private media in S3 (uploads, results)."""
 
     __tablename__ = "assets"
 
@@ -25,8 +26,9 @@ class Asset(SoftDeleteMixin, TimestampedModel, table=True):
         max_length=36,
         nullable=True,
     )
-    # INPUT_IMAGE | OUTPUT_IMAGE | OUTPUT_VIDEO | THUMBNAIL
-    asset_type: str = Field(sa_column=Column(String(32), nullable=False, index=True))
+    asset_type: AssetType = Field(
+        sa_column=Column(sa_str_enum(AssetType), nullable=False, index=True)
+    )
     # Only object key; never permanent public URL
     storage_key: str | None = Field(default=None, sa_column=Column(String(1024), nullable=True))
     # Temporary provider URL before transfer (24h RH links)
@@ -36,10 +38,14 @@ class Asset(SoftDeleteMixin, TimestampedModel, table=True):
     width: int | None = Field(default=None, sa_column=Column(Integer, nullable=True))
     height: int | None = Field(default=None, sa_column=Column(Integer, nullable=True))
     checksum_sha256: str | None = Field(default=None, sa_column=Column(String(64), nullable=True))
-    # UPLOADING | READY | PENDING_TRANSFER | QUARANTINED | DELETED
-    status: str = Field(
-        default="PENDING_TRANSFER",
-        sa_column=Column(String(32), nullable=False, server_default="PENDING_TRANSFER", index=True),
+    status: AssetStatus = Field(
+        default=AssetStatus.PENDING_TRANSFER,
+        sa_column=Column(
+            sa_str_enum(AssetStatus),
+            nullable=False,
+            server_default=AssetStatus.PENDING_TRANSFER.value,
+            index=True,
+        ),
     )
     retention_until: datetime | None = Field(
         default=None,

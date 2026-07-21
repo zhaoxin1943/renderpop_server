@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.models.enums import CreditTxnType
+
 
 class CreditBalanceResponse(BaseModel):
     available: int
@@ -17,7 +19,7 @@ class CreditBalanceResponse(BaseModel):
 
 class CreditTransactionResponse(BaseModel):
     id: str
-    type: str
+    type: CreditTxnType | str
     amount: int = Field(description="Signed amount from user perspective")
     generation_task_id: str | None = None
     created_at: datetime | None = None

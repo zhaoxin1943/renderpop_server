@@ -3,17 +3,9 @@ from __future__ import annotations
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.enums import TaskStatus, TaskType
 from app.models.generation_task import GenerationAttempt, GenerationTask
 from app.repo.base import BaseRepo
-
-ACTIVE_STATUSES = (
-    "CREATED",
-    "MODERATING",
-    "QUEUED",
-    "SUBMITTING",
-    "PROCESSING",
-    "CANCEL_REQUESTED",
-)
 
 
 class GenerationRepo(BaseRepo):
@@ -49,7 +41,7 @@ class GenerationRepo(BaseRepo):
             .select_from(GenerationTask)
             .where(
                 GenerationTask.user_id == user_id,
-                GenerationTask.status.in_(ACTIVE_STATUSES),
+                GenerationTask.status.in_(TaskStatus.active()),
             )
         )
         result = await self.session.execute(stmt)
@@ -61,7 +53,7 @@ class GenerationRepo(BaseRepo):
             .select_from(GenerationTask)
             .where(
                 GenerationTask.visitor_id == visitor_id,
-                GenerationTask.status.in_(ACTIVE_STATUSES),
+                GenerationTask.status.in_(TaskStatus.active()),
             )
         )
         result = await self.session.execute(stmt)
@@ -71,8 +63,8 @@ class GenerationRepo(BaseRepo):
         self,
         user_id: str,
         *,
-        task_type: str | None = None,
-        status: str | None = None,
+        task_type: TaskType | str | None = None,
+        status: TaskStatus | str | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> list[GenerationTask]:

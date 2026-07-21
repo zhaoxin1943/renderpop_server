@@ -11,6 +11,14 @@ from app.core.commerce import (
     PLAN_CREATOR,
     PLAN_FREE,
     PLAN_PRO,
+    PLAN_VISITOR,
+)
+from app.models.enums import (
+    MembershipPlan,
+    PlanCode,
+    SubscriptionStatus,
+    UsageFeature,
+    UsageSubjectType,
 )
 from app.models.subscription import Subscription
 from app.repo.subscription_repo import SubscriptionRepo
@@ -18,6 +26,17 @@ from app.repo.usage_repo import UsageRepo
 from app.schemas.credit import CreditBalanceResponse
 from app.schemas.me import EntitlementsResponse, FastImageQuotaResponse
 from app.service.credit_service import CreditService
+
+_INACTIVE_SUB_STATUSES = frozenset(
+    {
+        SubscriptionStatus.FAILED,
+        SubscriptionStatus.EXPIRED,
+        SubscriptionStatus.INCOMPLETE,
+    }
+)
+_PERIOD_ACTIVE_STATUSES = frozenset(
+    {SubscriptionStatus.ACTIVE, SubscriptionStatus.CANCELED}
+)
 
 
 class EntitlementService:
@@ -32,22 +51,22 @@ class EntitlementService:
         self._credits = credit_service
 
     def _is_membership_active(self, sub: Subscription, now: datetime) -> bool:
-        if sub.status in ("FAILED", "EXPIRED", "INCOMPLETE"):
+        if sub.status in _INACTIVE_SUB_STATUSES:
             return False
         if sub.current_period_end is None:
-            return sub.status == "ACTIVE"
+            return sub.status == SubscriptionStatus.ACTIVE
         end = sub.current_period_end
         if end.tzinfo is None:
             end = end.replace(tzinfo=UTC)
         grace = timedelta(days=MEMBERSHIP_GRACE_DAYS)
         # ACTIVE or CANCELED still in period; ON_HOLD within period+grace
-        if sub.status in ("ACTIVE", "CANCELED") and now < end:
+        if sub.status in _PERIOD_ACTIVE_STATUSES and now < end:
             return True
-        if sub.status == "ON_HOLD" and now < end + grace:
+        if sub.status == SubscriptionStatus.ON_HOLD and now < end + grace:
             return True
         return False
 
-    async def resolve_plan(self, user_id: str | None) -> str:
+    async def resolve_plan(self, user_id: str | None) -> PlanCode:
         if not user_id:
             return PLAN_FREE
         subs = await self._subs.list_for_user(user_id)
@@ -57,8 +76,9 @@ class EntitlementService:
         for s in subs:
             if not self._is_membership_active(s, now):
                 continue
-            if rank.get(s.plan_code, 0) > rank.get(best, 0):
-                best = s.plan_code
+            plan = PlanCode(s.plan_code) if s.plan_code else PLAN_FREE
+            if rank.get(plan, 0) > rank.get(best, 0):
+                best = plan
         return best
 
     async def get_entitlements(
@@ -66,8 +86,8 @@ class EntitlementService:
     ) -> EntitlementsResponse:
         plan = await self.resolve_plan(user_id) if user_id else PLAN_FREE
         if not user_id:
-            plan_key = "VISITOR"
-            daily_limit = FAST_DAILY_LIMITS["VISITOR"]
+            plan_key = PLAN_VISITOR
+            daily_limit = FAST_DAILY_LIMITS[PLAN_VISITOR]
         else:
             plan_key = plan
             daily_limit = FAST_DAILY_LIMITS.get(plan, FAST_DAILY_LIMITS[PLAN_FREE])
@@ -76,17 +96,17 @@ class EntitlementService:
         used = 0
         if user_id:
             row = await self._usage.get(
-                subject_type="USER",
+                subject_type=UsageSubjectType.USER,
                 subject_id=user_id,
-                feature="FAST_IMAGE",
+                feature=UsageFeature.FAST_IMAGE,
                 usage_date=today,
             )
             used = row.used_count if row else 0
         elif visitor_id:
             row = await self._usage.get(
-                subject_type="VISITOR",
+                subject_type=UsageSubjectType.VISITOR,
                 subject_id=visitor_id,
-                feature="FAST_IMAGE",
+                feature=UsageFeature.FAST_IMAGE,
                 usage_date=today,
             )
             used = row.used_count if row else 0
@@ -104,15 +124,16 @@ class EntitlementService:
         if user_id and membership_active:
             subs = await self._subs.list_for_user(user_id)
             now = datetime.now(UTC)
+            membership_plan = MembershipPlan(plan)
             for s in subs:
-                if self._is_membership_active(s, now) and s.plan_code == plan:
+                if self._is_membership_active(s, now) and s.plan_code == membership_plan:
                     period_end = s.current_period_end
                     break
 
         resets = datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=UTC)
 
         return EntitlementsResponse(
-            plan=plan if user_id else "VISITOR",
+            plan=plan if user_id else PLAN_VISITOR,
             membership_active=membership_active,
             current_period_end=period_end,
             fast_image=FastImageQuotaResponse(
@@ -123,7 +144,7 @@ class EntitlementService:
             ),
             credits=credits,
             concurrent_job_limit=CONCURRENT_JOB_LIMITS.get(
-                plan_key if user_id else "VISITOR", 1
+                plan_key if user_id else PLAN_VISITOR, 1
             ),
         )
 
@@ -138,20 +159,20 @@ class EntitlementService:
 
         plan = await self.resolve_plan(user_id) if user_id else PLAN_FREE
         if user_id:
-            subject_type, subject_id = "USER", user_id
+            subject_type, subject_id = UsageSubjectType.USER, user_id
             limit = FAST_DAILY_LIMITS.get(plan, FAST_DAILY_LIMITS[PLAN_FREE])
         else:
             if not visitor_id:
                 raise DailyLimitReached("Visitor id required")
-            subject_type, subject_id = "VISITOR", visitor_id
-            limit = FAST_DAILY_LIMITS["VISITOR"]
+            subject_type, subject_id = UsageSubjectType.VISITOR, visitor_id
+            limit = FAST_DAILY_LIMITS[PLAN_VISITOR]
 
         today = date.today()  # server local; prefer UTC date
         today = datetime.now(UTC).date()
         row = await self._usage.get_or_create_for_update(
             subject_type=subject_type,
             subject_id=subject_id,
-            feature="FAST_IMAGE",
+            feature=UsageFeature.FAST_IMAGE,
             usage_date=today,
             limit_snapshot=limit,
         )
@@ -171,15 +192,15 @@ class EntitlementService:
     ) -> None:
         today = datetime.now(UTC).date()
         if user_id:
-            subject_type, subject_id = "USER", user_id
+            subject_type, subject_id = UsageSubjectType.USER, user_id
         elif visitor_id:
-            subject_type, subject_id = "VISITOR", visitor_id
+            subject_type, subject_id = UsageSubjectType.VISITOR, visitor_id
         else:
             return
         row = await self._usage.get(
             subject_type=subject_type,
             subject_id=subject_id,
-            feature="FAST_IMAGE",
+            feature=UsageFeature.FAST_IMAGE,
             usage_date=today,
         )
         if row and row.used_count > 0:

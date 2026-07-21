@@ -21,6 +21,14 @@ from app.models.credit import (
     CreditReservationItem,
     CreditTransaction,
 )
+from app.models.enums import (
+    CreditGrantStatus,
+    CreditGrantType,
+    CreditReservationStatus,
+    CreditSourceType,
+    CreditTxnType,
+    MembershipPlan,
+)
 from app.repo.credit_repo import CreditRepo
 from app.schemas.credit import CreditBalanceResponse, CreditTransactionResponse
 
@@ -46,10 +54,10 @@ class CreditService:
         expires = datetime.now(UTC) + timedelta(days=SIGNUP_BONUS_DAYS)
         return await self._grant(
             user_id=user_id,
-            grant_type="SIGNUP_BONUS",
+            grant_type=CreditGrantType.SIGNUP_BONUS,
             amount=SIGNUP_BONUS_CREDITS,
             expires_at=expires,
-            source_type="SIGNUP",
+            source_type=CreditSourceType.SIGNUP,
             source_id=user_id,
             idempotency_key=key,
             metadata={"reason": "signup_bonus"},
@@ -71,10 +79,10 @@ class CreditService:
         expires = datetime.now(UTC) + timedelta(days=CREDIT_PACK_EXPIRE_DAYS)
         return await self._grant(
             user_id=user_id,
-            grant_type="PURCHASED",
+            grant_type=CreditGrantType.PURCHASED,
             amount=amount,
             expires_at=expires,
-            source_type="ORDER",
+            source_type=CreditSourceType.ORDER,
             source_id=order_id,
             idempotency_key=key,
             metadata={"product_code": product_code, "payment_id": payment_id},
@@ -84,7 +92,7 @@ class CreditService:
         self,
         *,
         user_id: str,
-        plan_code: str,
+        plan_code: MembershipPlan | str,
         provider_subscription_id: str,
         period_start: datetime,
         period_end: datetime | None = None,
@@ -100,14 +108,17 @@ class CreditService:
         if existing:
             return existing
 
-        full = SUBSCRIPTION_CREDITS.get(plan_code, 0)
+        try:
+            membership_plan = MembershipPlan(plan_code)
+        except ValueError:
+            return None
+
+        full = SUBSCRIPTION_CREDITS.get(membership_plan, 0)
         if full <= 0:
             return None
 
         # Carry cap: available+reserved of existing SUBSCRIPTION grants
-        available, reserved, _, _ = await self._repo.sum_balances(user_id)
         # Cap applies to membership credits remaining vs 2× this period grant
-        # Simplified: total available credits of SUBSCRIPTION type only
         sub_remaining = await self._subscription_remaining(user_id)
         cap = full * SUBSCRIPTION_CARRY_MULTIPLIER
         room = max(0, cap - sub_remaining)
@@ -128,31 +139,31 @@ class CreditService:
             grant = CreditGrant(
                 id=new_id(),
                 user_id=user_id,
-                grant_type="SUBSCRIPTION",
+                grant_type=CreditGrantType.SUBSCRIPTION,
                 original_amount=0,
                 available_amount=0,
                 reserved_amount=0,
                 consumed_amount=0,
                 revoked_amount=0,
                 expires_at=expires,
-                source_type="SUBSCRIPTION_PERIOD",
+                source_type=CreditSourceType.SUBSCRIPTION_PERIOD,
                 source_id=provider_subscription_id,
                 idempotency_key=key,
-                status="EXHAUSTED",
+                status=CreditGrantStatus.EXHAUSTED,
             )
             await self._repo.add_grant(grant)
             return grant
 
         return await self._grant(
             user_id=user_id,
-            grant_type="SUBSCRIPTION",
+            grant_type=CreditGrantType.SUBSCRIPTION,
             amount=amount,
             expires_at=expires,
-            source_type="SUBSCRIPTION_PERIOD",
+            source_type=CreditSourceType.SUBSCRIPTION_PERIOD,
             source_id=provider_subscription_id,
             idempotency_key=key,
             metadata={
-                "plan_code": plan_code,
+                "plan_code": membership_plan.value,
                 "full_amount": full,
                 "capped_amount": amount,
                 "period_start": period_key,
@@ -167,8 +178,8 @@ class CreditService:
         now = datetime.now(UTC)
         stmt = select(CG).where(
             CG.user_id == user_id,
-            CG.grant_type == "SUBSCRIPTION",
-            CG.status == "ACTIVE",
+            CG.grant_type == CreditGrantType.SUBSCRIPTION,
+            CG.status == CreditGrantStatus.ACTIVE,
         )
         result = await self._repo.session.execute(stmt)
         total = 0
@@ -183,10 +194,10 @@ class CreditService:
         self,
         *,
         user_id: str,
-        grant_type: str,
+        grant_type: CreditGrantType,
         amount: int,
         expires_at: datetime | None,
-        source_type: str,
+        source_type: CreditSourceType,
         source_id: str | None,
         idempotency_key: str,
         metadata: dict | None = None,
@@ -204,7 +215,7 @@ class CreditService:
             source_type=source_type,
             source_id=source_id,
             idempotency_key=idempotency_key,
-            status="ACTIVE" if amount > 0 else "EXHAUSTED",
+            status=CreditGrantStatus.ACTIVE if amount > 0 else CreditGrantStatus.EXHAUSTED,
         )
         await self._repo.add_grant(grant)
         if amount > 0:
@@ -213,7 +224,7 @@ class CreditService:
                     id=new_id(),
                     user_id=user_id,
                     grant_id=grant.id,
-                    type="GRANT",
+                    type=CreditTxnType.GRANT,
                     amount=amount,
                     balance_after={
                         "available": grant.available_amount,
@@ -264,7 +275,7 @@ class CreditService:
             user_id=user_id,
             generation_task_id=task_id,
             total_amount=amount,
-            status="ACTIVE",
+            status=CreditReservationStatus.ACTIVE,
             expires_at=datetime.now(UTC) + timedelta(hours=RESERVATION_TTL_HOURS),
             pricing_snapshot=pricing_snapshot,
         )
@@ -274,7 +285,7 @@ class CreditService:
             g.available_amount -= take
             g.reserved_amount += take
             if g.available_amount == 0 and g.reserved_amount == 0:
-                g.status = "EXHAUSTED"
+                g.status = CreditGrantStatus.EXHAUSTED
             await self._repo.add_reservation_item(
                 CreditReservationItem(
                     id=new_id(),
@@ -289,7 +300,7 @@ class CreditService:
                     user_id=user_id,
                     grant_id=g.id,
                     generation_task_id=task_id,
-                    type="RESERVE",
+                    type=CreditTxnType.RESERVE,
                     amount=take,
                     balance_after={
                         "available": g.available_amount,
@@ -307,9 +318,9 @@ class CreditService:
         reservation = await self._repo.get_reservation_by_task(task_id)
         if reservation is None:
             return None
-        if reservation.status == "CAPTURED":
+        if reservation.status == CreditReservationStatus.CAPTURED:
             return reservation
-        if reservation.status != "ACTIVE":
+        if reservation.status != CreditReservationStatus.ACTIVE:
             return reservation
 
         items = await self._repo.list_reservation_items(reservation.id)
@@ -321,14 +332,14 @@ class CreditService:
             grant.reserved_amount = max(0, grant.reserved_amount - take)
             grant.consumed_amount += take
             if grant.available_amount == 0 and grant.reserved_amount == 0:
-                grant.status = "EXHAUSTED"
+                grant.status = CreditGrantStatus.EXHAUSTED
             await self._repo.add_transaction(
                 CreditTransaction(
                     id=new_id(),
                     user_id=reservation.user_id,
                     grant_id=grant.id,
                     generation_task_id=task_id,
-                    type="CAPTURE",
+                    type=CreditTxnType.CAPTURE,
                     amount=take,
                     balance_after={
                         "available": grant.available_amount,
@@ -339,7 +350,7 @@ class CreditService:
                     metadata_json={"reservation_id": reservation.id},
                 )
             )
-        reservation.status = "CAPTURED"
+        reservation.status = CreditReservationStatus.CAPTURED
         await self._repo.session.flush()
         return reservation
 
@@ -347,9 +358,9 @@ class CreditService:
         reservation = await self._repo.get_reservation_by_task(task_id)
         if reservation is None:
             return None
-        if reservation.status == "RELEASED":
+        if reservation.status == CreditReservationStatus.RELEASED:
             return reservation
-        if reservation.status != "ACTIVE":
+        if reservation.status != CreditReservationStatus.ACTIVE:
             return reservation
 
         items = await self._repo.list_reservation_items(reservation.id)
@@ -368,14 +379,14 @@ class CreditService:
                 # and zero available for expired portion
                 expired_amt = grant.available_amount
                 grant.available_amount = 0
-                grant.status = "EXPIRED"
+                grant.status = CreditGrantStatus.EXPIRED
                 await self._repo.add_transaction(
                     CreditTransaction(
                         id=new_id(),
                         user_id=reservation.user_id,
                         grant_id=grant.id,
                         generation_task_id=task_id,
-                        type="RELEASE",
+                        type=CreditTxnType.RELEASE,
                         amount=take,
                         balance_after={
                             "available": 0,
@@ -391,15 +402,15 @@ class CreditService:
                     )
                 )
             else:
-                if grant.status == "EXHAUSTED":
-                    grant.status = "ACTIVE"
+                if grant.status == CreditGrantStatus.EXHAUSTED:
+                    grant.status = CreditGrantStatus.ACTIVE
                 await self._repo.add_transaction(
                     CreditTransaction(
                         id=new_id(),
                         user_id=reservation.user_id,
                         grant_id=grant.id,
                         generation_task_id=task_id,
-                        type="RELEASE",
+                        type=CreditTxnType.RELEASE,
                         amount=take,
                         balance_after={
                             "available": grant.available_amount,
@@ -410,7 +421,7 @@ class CreditService:
                         metadata_json={"reservation_id": reservation.id},
                     )
                 )
-        reservation.status = "RELEASED"
+        reservation.status = CreditReservationStatus.RELEASED
         await self._repo.session.flush()
         return reservation
 
@@ -421,9 +432,13 @@ class CreditService:
         out: list[CreditTransactionResponse] = []
         for t in rows:
             # User-facing: CAPTURE = spend; RESERVE = hold; RELEASE = refund hold
-            if t.type == "RESERVE":
+            if t.type == CreditTxnType.RESERVE:
                 amount = -t.amount
-            elif t.type in ("CAPTURE", "EXPIRE", "REVOKE"):
+            elif t.type in (
+                CreditTxnType.CAPTURE,
+                CreditTxnType.EXPIRE,
+                CreditTxnType.REVOKE,
+            ):
                 amount = -t.amount
             else:
                 amount = t.amount

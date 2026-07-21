@@ -4,17 +4,25 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from app.models.enums import (
+    BillingInterval,
+    MembershipPlan,
+    OrderStatus,
+    ProductEnvironment,
+    ProductType,
+)
+
 
 class ProductResponse(BaseModel):
     code: str
     name: str
-    product_type: str
-    plan_code: str | None = None
-    billing_interval: str | None = None
+    product_type: ProductType
+    plan_code: MembershipPlan | None = None
+    billing_interval: BillingInterval | None = None
     credits_granted: int
     amount_minor: int
     currency: str
-    environment: str
+    environment: ProductEnvironment | str
 
 
 class ProductListResponse(BaseModel):
@@ -29,7 +37,7 @@ class CheckoutBody(BaseModel):
 
 class CheckoutSessionResponse(BaseModel):
     order_id: str
-    status: str
+    status: OrderStatus | str
     checkout_url: str | None = None
     session_id: str | None = None
     reused: bool = False

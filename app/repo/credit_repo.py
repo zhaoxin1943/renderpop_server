@@ -11,6 +11,7 @@ from app.models.credit import (
     CreditReservationItem,
     CreditTransaction,
 )
+from app.models.enums import CreditGrantStatus
 from app.repo.base import BaseRepo
 
 
@@ -35,7 +36,7 @@ class CreditRepo(BaseRepo):
             select(CreditGrant)
             .where(
                 CreditGrant.user_id == user_id,
-                CreditGrant.status == "ACTIVE",
+                CreditGrant.status == CreditGrantStatus.ACTIVE,
                 CreditGrant.available_amount > 0,
             )
             .order_by(
@@ -60,7 +61,7 @@ class CreditRepo(BaseRepo):
         now = datetime.now(UTC)
         stmt = select(CreditGrant).where(
             CreditGrant.user_id == user_id,
-            CreditGrant.status == "ACTIVE",
+            CreditGrant.status == CreditGrantStatus.ACTIVE,
         )
         result = await self.session.execute(stmt)
         grants = list(result.scalars().all())

@@ -4,6 +4,14 @@ from sqlalchemy import JSON, Column, DateTime, Integer, String, Text, UniqueCons
 from sqlmodel import Field
 
 from app.models.base import CreatedModel, TimestampedModel
+from app.models.enums import (
+    AttemptStatus,
+    GenerationProvider,
+    TaskStatus,
+    TaskType,
+    TransferStatus,
+    sa_str_enum,
+)
 
 
 class GenerationTask(TimestampedModel, table=True):
@@ -32,13 +40,15 @@ class GenerationTask(TimestampedModel, table=True):
         max_length=36,
         nullable=True,
     )
-    # FAST_IMAGE | PRO_IMAGE | DANCE_VIDEO (future)
-    task_type: str = Field(sa_column=Column(String(32), nullable=False, index=True))
-    # CREATED | MODERATING | QUEUED | SUBMITTING | PROCESSING |
-    # SUCCEEDED | REJECTED | FAILED | CANCEL_REQUESTED | CANCELED | EXPIRED
-    status: str = Field(
-        default="CREATED",
-        sa_column=Column(String(32), nullable=False, server_default="CREATED", index=True),
+    task_type: TaskType = Field(sa_column=Column(sa_str_enum(TaskType), nullable=False, index=True))
+    status: TaskStatus = Field(
+        default=TaskStatus.CREATED,
+        sa_column=Column(
+            sa_str_enum(TaskStatus),
+            nullable=False,
+            server_default=TaskStatus.CREATED.value,
+            index=True,
+        ),
     )
     prompt: str = Field(sa_column=Column(Text, nullable=False))
     aspect_ratio: str = Field(sa_column=Column(String(16), nullable=False))
@@ -53,9 +63,9 @@ class GenerationTask(TimestampedModel, table=True):
         default=None,
         sa_column=Column(String(36), nullable=True, index=True),
     )
-    provider: str | None = Field(
-        default="runninghub",
-        sa_column=Column(String(64), nullable=True),
+    provider: GenerationProvider | None = Field(
+        default=GenerationProvider.RUNNINGHUB,
+        sa_column=Column(sa_str_enum(GenerationProvider, length=64), nullable=True),
     )
     provider_app_id: str | None = Field(default=None, sa_column=Column(String(64), nullable=True))
     provider_task_id: str | None = Field(
@@ -74,10 +84,13 @@ class GenerationTask(TimestampedModel, table=True):
         max_length=36,
         nullable=True,
     )
-    # PENDING | SKIPPED | SUCCEEDED | FAILED  (S3 transfer; stub for now)
-    result_transfer_status: str = Field(
-        default="PENDING",
-        sa_column=Column(String(32), nullable=False, server_default="PENDING"),
+    result_transfer_status: TransferStatus = Field(
+        default=TransferStatus.PENDING,
+        sa_column=Column(
+            sa_str_enum(TransferStatus),
+            nullable=False,
+            server_default=TransferStatus.PENDING.value,
+        ),
     )
     failure_code: str | None = Field(default=None, sa_column=Column(String(64), nullable=True))
     failure_detail: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
@@ -115,8 +128,9 @@ class GenerationAttempt(CreatedModel, table=True):
         nullable=False,
     )
     attempt_no: int = Field(sa_column=Column(Integer, nullable=False))
-    # submitted | running | succeeded | failed | timed_out
-    status: str = Field(sa_column=Column(String(32), nullable=False, index=True))
+    status: AttemptStatus = Field(
+        sa_column=Column(sa_str_enum(AttemptStatus), nullable=False, index=True)
+    )
     provider_task_id: str | None = Field(
         default=None,
         sa_column=Column(String(255), nullable=True),

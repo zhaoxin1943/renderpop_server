@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     runninghub_base_url: str = "https://www.runninghub.ai"
 
     aws_region: str = "us-east-2"
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
     s3_bucket_name: str = "renderpop-assets"
     s3_asset_prefix: str = "media"
 
@@ -62,9 +64,11 @@ class Settings(BaseSettings):
     @property
     def product_environment(self) -> str:
         """Map Dodo mode to products.environment column."""
+        from app.models.enums import ProductEnvironment
+
         if self.dodo_environment == "live_mode":
-            return "live"
-        return "sandbox"
+            return ProductEnvironment.LIVE.value
+        return ProductEnvironment.SANDBOX.value
 
 
 @lru_cache

@@ -4,15 +4,11 @@ from sqlalchemy import Boolean, Column, DateTime, String, UniqueConstraint
 from sqlmodel import Field
 
 from app.models.base import TimestampedModel
+from app.models.enums import MembershipPlan, PaymentProvider, SubscriptionStatus, sa_str_enum
 
 
 class Subscription(TimestampedModel, table=True):
-    """
-    Monthly membership subscription (Creator / Pro).
-
-    Status (mapped from Dodo):
-      INCOMPLETE | ACTIVE | ON_HOLD | CANCELED | EXPIRED | FAILED
-    """
+    """Monthly membership subscription (Creator / Pro). Status mapped from Dodo."""
 
     __tablename__ = "subscriptions"
     __table_args__ = (
@@ -24,21 +20,31 @@ class Subscription(TimestampedModel, table=True):
     )
 
     user_id: str = Field(foreign_key="users.id", index=True, max_length=36, nullable=False)
-    # CREATOR | PRO
-    plan_code: str = Field(sa_column=Column(String(32), nullable=False, index=True))
+    plan_code: MembershipPlan = Field(
+        sa_column=Column(sa_str_enum(MembershipPlan), nullable=False, index=True)
+    )
     product_code: str = Field(sa_column=Column(String(64), nullable=False))
-    provider: str = Field(
-        default="dodo",
-        sa_column=Column(String(32), nullable=False, server_default="dodo"),
+    provider: PaymentProvider = Field(
+        default=PaymentProvider.DODO,
+        sa_column=Column(
+            sa_str_enum(PaymentProvider),
+            nullable=False,
+            server_default=PaymentProvider.DODO.value,
+        ),
     )
     provider_customer_id: str | None = Field(
         default=None,
         sa_column=Column(String(255), nullable=True, index=True),
     )
     provider_subscription_id: str = Field(sa_column=Column(String(255), nullable=False))
-    status: str = Field(
-        default="INCOMPLETE",
-        sa_column=Column(String(32), nullable=False, server_default="INCOMPLETE", index=True),
+    status: SubscriptionStatus = Field(
+        default=SubscriptionStatus.INCOMPLETE,
+        sa_column=Column(
+            sa_str_enum(SubscriptionStatus),
+            nullable=False,
+            server_default=SubscriptionStatus.INCOMPLETE.value,
+            index=True,
+        ),
     )
     current_period_start: datetime | None = Field(
         default=None,

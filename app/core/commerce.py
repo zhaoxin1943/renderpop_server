@@ -9,27 +9,36 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Final
 
-# --- Plan / quota ---
+from app.models.enums import (
+    BillingInterval,
+    MembershipPlan,
+    PlanCode,
+    ProductCode,
+    ProductType,
+)
 
-PLAN_FREE: Final = "FREE"
-PLAN_CREATOR: Final = "CREATOR"
-PLAN_PRO: Final = "PRO"
+# --- Plan / quota (aliases keep call sites readable) ---
 
-FAST_DAILY_LIMITS: Final[dict[str, int]] = {
-    PLAN_FREE: 5,
-    PLAN_CREATOR: 30,
-    PLAN_PRO: 60,
-    "VISITOR": 2,
+PLAN_FREE: Final = PlanCode.FREE
+PLAN_CREATOR: Final = PlanCode.CREATOR
+PLAN_PRO: Final = PlanCode.PRO
+PLAN_VISITOR: Final = PlanCode.VISITOR
+
+FAST_DAILY_LIMITS: Final[dict[PlanCode, int]] = {
+    PlanCode.FREE: 5,
+    PlanCode.CREATOR: 30,
+    PlanCode.PRO: 60,
+    PlanCode.VISITOR: 2,
 }
 
 PRO_IMAGE_CREDITS: Final = 12
 SIGNUP_BONUS_CREDITS: Final = 20
 SIGNUP_BONUS_DAYS: Final = 7
 
-# Subscription period grant
-SUBSCRIPTION_CREDITS: Final[dict[str, int]] = {
-    PLAN_CREATOR: 1000,
-    PLAN_PRO: 2400,
+# Subscription period grant (paid membership plans only)
+SUBSCRIPTION_CREDITS: Final[dict[MembershipPlan, int]] = {
+    MembershipPlan.CREATOR: 1000,
+    MembershipPlan.PRO: 2400,
 }
 
 # Max carry of subscription credits = 2 × current period grant
@@ -41,27 +50,27 @@ MEMBERSHIP_GRACE_DAYS: Final = 3
 RESERVATION_TTL_HOURS: Final = 2
 
 # Concurrent generation tasks
-CONCURRENT_JOB_LIMITS: Final[dict[str, int]] = {
-    "VISITOR": 1,
-    PLAN_FREE: 1,
-    PLAN_CREATOR: 2,
-    PLAN_PRO: 3,
+CONCURRENT_JOB_LIMITS: Final[dict[PlanCode, int]] = {
+    PlanCode.VISITOR: 1,
+    PlanCode.FREE: 1,
+    PlanCode.CREATOR: 2,
+    PlanCode.PRO: 3,
 }
 
 # --- Product codes (must match products table) ---
 
-PRODUCT_CREATOR_MONTHLY: Final = "CREATOR_MONTHLY"
-PRODUCT_PRO_MONTHLY: Final = "PRO_MONTHLY"
-PRODUCT_CREDIT_400: Final = "CREDIT_400"
-PRODUCT_CREDIT_900: Final = "CREDIT_900"
-PRODUCT_CREDIT_2000: Final = "CREDIT_2000"
+PRODUCT_CREATOR_MONTHLY: Final = ProductCode.CREATOR_MONTHLY
+PRODUCT_PRO_MONTHLY: Final = ProductCode.PRO_MONTHLY
+PRODUCT_CREDIT_400: Final = ProductCode.CREDIT_400
+PRODUCT_CREDIT_900: Final = ProductCode.CREDIT_900
+PRODUCT_CREDIT_2000: Final = ProductCode.CREDIT_2000
 
-ALL_PRODUCT_CODES: Final[tuple[str, ...]] = (
-    PRODUCT_CREATOR_MONTHLY,
-    PRODUCT_PRO_MONTHLY,
-    PRODUCT_CREDIT_400,
-    PRODUCT_CREDIT_900,
-    PRODUCT_CREDIT_2000,
+ALL_PRODUCT_CODES: Final[tuple[ProductCode, ...]] = (
+    ProductCode.CREATOR_MONTHLY,
+    ProductCode.PRO_MONTHLY,
+    ProductCode.CREDIT_400,
+    ProductCode.CREDIT_900,
+    ProductCode.CREDIT_2000,
 )
 
 # --- RunningHub ---
@@ -85,11 +94,11 @@ ALLOWED_ASPECT_RATIOS: Final[frozenset[str]] = frozenset(FAST_ASPECT_SIZES.keys(
 
 @dataclass(frozen=True, slots=True)
 class ProductSeed:
-    code: str
+    code: ProductCode
     name: str
-    product_type: str  # SUBSCRIPTION | CREDIT_PACK
-    plan_code: str | None
-    billing_interval: str | None
+    product_type: ProductType
+    plan_code: MembershipPlan | None
+    billing_interval: BillingInterval | None
     credits_granted: int
     amount_minor: int
     currency: str
@@ -99,31 +108,31 @@ class ProductSeed:
 # Sandbox Dodo product ids (from merchant dashboard 2026-07-21)
 SANDBOX_PRODUCT_SEEDS: Final[tuple[ProductSeed, ...]] = (
     ProductSeed(
-        code=PRODUCT_CREATOR_MONTHLY,
+        code=ProductCode.CREATOR_MONTHLY,
         name="RenderPop Creator Monthly",
-        product_type="SUBSCRIPTION",
-        plan_code=PLAN_CREATOR,
-        billing_interval="month",
-        credits_granted=SUBSCRIPTION_CREDITS[PLAN_CREATOR],
+        product_type=ProductType.SUBSCRIPTION,
+        plan_code=MembershipPlan.CREATOR,
+        billing_interval=BillingInterval.MONTH,
+        credits_granted=SUBSCRIPTION_CREDITS[MembershipPlan.CREATOR],
         amount_minor=999,  # $9.99
         currency="USD",
         provider_product_id="pdt_0NjeYw0jgwlkQVQqGtrVr",
     ),
     ProductSeed(
-        code=PRODUCT_PRO_MONTHLY,
+        code=ProductCode.PRO_MONTHLY,
         name="RenderPop Pro Monthly",
-        product_type="SUBSCRIPTION",
-        plan_code=PLAN_PRO,
-        billing_interval="month",
-        credits_granted=SUBSCRIPTION_CREDITS[PLAN_PRO],
+        product_type=ProductType.SUBSCRIPTION,
+        plan_code=MembershipPlan.PRO,
+        billing_interval=BillingInterval.MONTH,
+        credits_granted=SUBSCRIPTION_CREDITS[MembershipPlan.PRO],
         amount_minor=1999,
         currency="USD",
         provider_product_id="pdt_0NjeZBaaoslC6lRSEusue",
     ),
     ProductSeed(
-        code=PRODUCT_CREDIT_400,
+        code=ProductCode.CREDIT_400,
         name="RenderPop 400 Credits",
-        product_type="CREDIT_PACK",
+        product_type=ProductType.CREDIT_PACK,
         plan_code=None,
         billing_interval=None,
         credits_granted=400,
@@ -132,9 +141,9 @@ SANDBOX_PRODUCT_SEEDS: Final[tuple[ProductSeed, ...]] = (
         provider_product_id="pdt_0NjeZKiCGZeN20mcUv3f7",
     ),
     ProductSeed(
-        code=PRODUCT_CREDIT_900,
+        code=ProductCode.CREDIT_900,
         name="RenderPop 900 Credits",
-        product_type="CREDIT_PACK",
+        product_type=ProductType.CREDIT_PACK,
         plan_code=None,
         billing_interval=None,
         credits_granted=900,
@@ -143,9 +152,9 @@ SANDBOX_PRODUCT_SEEDS: Final[tuple[ProductSeed, ...]] = (
         provider_product_id="pdt_0NjeZTrMPp2krJqSndzD6",
     ),
     ProductSeed(
-        code=PRODUCT_CREDIT_2000,
+        code=ProductCode.CREDIT_2000,
         name="RenderPop 2,000 Credits",
-        product_type="CREDIT_PACK",
+        product_type=ProductType.CREDIT_PACK,
         plan_code=None,
         billing_interval=None,
         credits_granted=2000,

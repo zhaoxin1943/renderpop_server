@@ -8,6 +8,12 @@ from fastapi import APIRouter, HTTPException
 
 from app.core.deps import CreditServiceDep, SettingsDep, UserRepoDep
 from app.models.base import new_id
+from app.models.enums import (
+    CreditGrantType,
+    CreditSourceType,
+    RiskLevel,
+    UserStatus,
+)
 from app.models.user import User
 from app.schemas.dev import (
     DevUserBody,
@@ -34,8 +40,8 @@ async def create_dev_user(
         id=new_id(),
         email=str(body.email).lower(),
         display_name=body.display_name,
-        status="ACTIVE",
-        risk_level="LOW",
+        status=UserStatus.ACTIVE,
+        risk_level=RiskLevel.LOW,
     )
     await users.create(user)
     return DevUserResponse(id=user.id, email=user.email, created=True)
@@ -52,10 +58,10 @@ async def grant_credits(
 
     grant = await credits._grant(  # noqa: SLF001 — dev only
         user_id=body.user_id,
-        grant_type="COMPENSATION",
+        grant_type=CreditGrantType.COMPENSATION,
         amount=body.amount,
         expires_at=datetime.now(UTC) + timedelta(days=90),
-        source_type="ADMIN",
+        source_type=CreditSourceType.ADMIN,
         source_id=new_id(),
         idempotency_key=f"dev_grant:{body.user_id}:{new_id()}",
         metadata={"reason": body.reason},

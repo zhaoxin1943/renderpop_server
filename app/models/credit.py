@@ -4,6 +4,14 @@ from sqlalchemy import JSON, Column, DateTime, Integer, String, UniqueConstraint
 from sqlmodel import Field
 
 from app.models.base import CreatedModel, TimestampedModel
+from app.models.enums import (
+    CreditGrantStatus,
+    CreditGrantType,
+    CreditReservationStatus,
+    CreditSourceType,
+    CreditTxnType,
+    sa_str_enum,
+)
 
 
 class CreditGrant(TimestampedModel, table=True):
@@ -20,8 +28,9 @@ class CreditGrant(TimestampedModel, table=True):
     )
 
     user_id: str = Field(foreign_key="users.id", index=True, max_length=36, nullable=False)
-    # SIGNUP_BONUS | PROMO | SUBSCRIPTION | PURCHASED | COMPENSATION
-    grant_type: str = Field(sa_column=Column(String(32), nullable=False, index=True))
+    grant_type: CreditGrantType = Field(
+        sa_column=Column(sa_str_enum(CreditGrantType), nullable=False, index=True)
+    )
     original_amount: int = Field(sa_column=Column(Integer, nullable=False))
     available_amount: int = Field(sa_column=Column(Integer, nullable=False))
     reserved_amount: int = Field(
@@ -40,17 +49,22 @@ class CreditGrant(TimestampedModel, table=True):
         default=None,
         sa_column=Column(DateTime(timezone=True), nullable=True, index=True),
     )
-    # ORDER | SUBSCRIPTION_PERIOD | SIGNUP | PROMO | ADMIN | REFUND
-    source_type: str = Field(sa_column=Column(String(32), nullable=False, index=True))
+    source_type: CreditSourceType = Field(
+        sa_column=Column(sa_str_enum(CreditSourceType), nullable=False, index=True)
+    )
     source_id: str | None = Field(
         default=None,
         sa_column=Column(String(64), nullable=True, index=True),
     )
     idempotency_key: str = Field(sa_column=Column(String(191), nullable=False))
-    # ACTIVE | EXPIRED | REVOKED | EXHAUSTED
-    status: str = Field(
-        default="ACTIVE",
-        sa_column=Column(String(32), nullable=False, server_default="ACTIVE", index=True),
+    status: CreditGrantStatus = Field(
+        default=CreditGrantStatus.ACTIVE,
+        sa_column=Column(
+            sa_str_enum(CreditGrantStatus),
+            nullable=False,
+            server_default=CreditGrantStatus.ACTIVE.value,
+            index=True,
+        ),
     )
 
 
@@ -73,8 +87,9 @@ class CreditTransaction(CreatedModel, table=True):
         default=None,
         sa_column=Column(String(36), nullable=True, index=True),
     )
-    # GRANT | RESERVE | CAPTURE | RELEASE | EXPIRE | REVOKE | ADJUST
-    type: str = Field(sa_column=Column(String(32), nullable=False, index=True))
+    type: CreditTxnType = Field(
+        sa_column=Column(sa_str_enum(CreditTxnType), nullable=False, index=True)
+    )
     # Always positive; direction is implied by type
     amount: int = Field(sa_column=Column(Integer, nullable=False))
     balance_after: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
@@ -96,10 +111,14 @@ class CreditReservation(TimestampedModel, table=True):
     user_id: str = Field(foreign_key="users.id", index=True, max_length=36, nullable=False)
     generation_task_id: str = Field(sa_column=Column(String(36), nullable=False))
     total_amount: int = Field(sa_column=Column(Integer, nullable=False))
-    # ACTIVE | CAPTURED | RELEASED
-    status: str = Field(
-        default="ACTIVE",
-        sa_column=Column(String(32), nullable=False, server_default="ACTIVE", index=True),
+    status: CreditReservationStatus = Field(
+        default=CreditReservationStatus.ACTIVE,
+        sa_column=Column(
+            sa_str_enum(CreditReservationStatus),
+            nullable=False,
+            server_default=CreditReservationStatus.ACTIVE.value,
+            index=True,
+        ),
     )
     expires_at: datetime | None = Field(
         default=None,
