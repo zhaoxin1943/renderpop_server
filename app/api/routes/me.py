@@ -1,4 +1,6 @@
-from fastapi import APIRouter
+from typing import Annotated
+
+from fastapi import APIRouter, Header
 
 from app.core.deps import (
     CreditServiceDep,
@@ -35,8 +37,13 @@ async def me(user_id: OptionalUserIdDep, users: UserRepoDep) -> MeResponse:
 async def entitlements(
     user_id: OptionalUserIdDep,
     service: EntitlementServiceDep,
+    x_visitor_id: Annotated[str | None, Header(alias="X-Visitor-Id")] = None,
 ) -> EntitlementsResponse:
-    return await service.get_entitlements(user_id=user_id, visitor_id=None)
+    """Quota for the current user, or visitor Fast daily limit via X-Visitor-Id."""
+    return await service.get_entitlements(
+        user_id=user_id,
+        visitor_id=None if user_id else x_visitor_id,
+    )
 
 
 @router.get("/me/credit-transactions", response_model=CreditTransactionListResponse)

@@ -25,7 +25,7 @@ class GenerationTaskResponse(BaseModel):
 class CreateGenerationBody(BaseModel):
     job_type: TaskType = Field(description="FAST_IMAGE | PRO_IMAGE")
     prompt: str
-    aspect_ratio: str = "1:1"
+    aspect_ratio: str = Field(default="9:16", description="Default 9:16 (mobile-first)")
     client_request_id: str | None = None
 
 

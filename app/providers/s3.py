@@ -74,6 +74,41 @@ class S3Storage:
         safe_ext = (ext or "bin").lstrip(".").lower()[:16] or "bin"
         return f"{self._prefix}/outputs/{owner}/{task_id}/{uuid4().hex}.{safe_ext}"
 
+    def build_showcase_key(self, *, sort_order: int, ext: str) -> str:
+        """Public-read homepage waterfall objects live under media/showcase/."""
+        safe_ext = (ext or "bin").lstrip(".").lower()[:16] or "bin"
+        return f"{self._prefix}/showcase/{int(sort_order):02d}.{safe_ext}"
+
+    def public_object_url(self, storage_key: str) -> str:
+        """
+        Path-style public URL for objects under the public-read showcase prefix.
+
+        Virtual-hosted style may 403 on this bucket; path-style is verified working
+        with the PublicReadShowcaseFolder bucket policy.
+        """
+        key = storage_key.lstrip("/")
+        return f"https://s3.{self._region}.amazonaws.com/{self._bucket}/{key}"
+
+    def put_public_bytes(
+        self,
+        *,
+        key: str,
+        body: bytes,
+        content_type: str,
+        cache_control: str = "public, max-age=31536000, immutable",
+    ) -> None:
+        """Upload bytes to S3 (bucket policy grants public GET on showcase/*)."""
+        if not self.configured:
+            raise RuntimeError("S3 credentials or bucket not configured")
+        self._get_client().put_object(
+            Bucket=self._bucket,
+            Key=key,
+            Body=body,
+            ContentType=content_type,
+            CacheControl=cache_control,
+            ServerSideEncryption="AES256",
+        )
+
     async def transfer_from_url(
         self,
         *,

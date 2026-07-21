@@ -83,11 +83,16 @@ PRO_DEFAULT_RESOLUTION: Final = "2k"
 FAST_DEFAULT_SCALE_BY: Final = "1.5"
 
 # aspect_ratio -> (width, height) for Fast workflow
+# Default product ratio is 9:16 (mobile-first).
 FAST_ASPECT_SIZES: Final[dict[str, tuple[int, int]]] = {
+    "9:16": (576, 1024),
+    "16:9": (1024, 576),
     "1:1": (1024, 1024),
-    "3:4": (1024, 1536),
-    "4:3": (1536, 1024),
+    "3:4": (768, 1024),
+    "4:3": (1024, 768),
 }
+
+DEFAULT_ASPECT_RATIO: Final = "9:16"
 
 ALLOWED_ASPECT_RATIOS: Final[frozenset[str]] = frozenset(FAST_ASPECT_SIZES.keys())
 

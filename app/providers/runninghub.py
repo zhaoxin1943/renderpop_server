@@ -34,7 +34,7 @@ class RunningHubClient:
 
     @staticmethod
     def build_fast_node_list(*, prompt: str, aspect_ratio: str) -> list[dict[str, str]]:
-        w, h = FAST_ASPECT_SIZES.get(aspect_ratio, FAST_ASPECT_SIZES["1:1"])
+        w, h = FAST_ASPECT_SIZES.get(aspect_ratio, FAST_ASPECT_SIZES["9:16"])
         return [
             {"nodeId": "76", "fieldName": "text", "fieldValue": prompt},
             {"nodeId": "27", "fieldName": "width", "fieldValue": str(w)},
@@ -69,7 +69,7 @@ class RunningHubClient:
 
     @staticmethod
     def input_params_for_fast(aspect_ratio: str) -> dict[str, Any]:
-        w, h = FAST_ASPECT_SIZES.get(aspect_ratio, FAST_ASPECT_SIZES["1:1"])
+        w, h = FAST_ASPECT_SIZES.get(aspect_ratio, FAST_ASPECT_SIZES["9:16"])
         return {
             "width": w,
             "height": h,

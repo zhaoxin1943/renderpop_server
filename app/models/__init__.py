@@ -24,6 +24,7 @@ from app.models.payment_event import PaymentEvent
 from app.models.product import Product
 from app.models.refund import Refund
 from app.models.session import Session
+from app.models.showcase import ShowcaseItem
 from app.models.subscription import Subscription
 from app.models.user import User
 
@@ -46,6 +47,7 @@ __all__ = [
     "Product",
     "Refund",
     "Session",
+    "ShowcaseItem",
     "SoftDeleteMixin",
     "Subscription",
     "TimestampedModel",
