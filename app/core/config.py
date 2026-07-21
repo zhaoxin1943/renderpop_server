@@ -26,7 +26,6 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://127.0.0.1:6379/0"
     # Shared Redis instance: all keys from this service MUST use this prefix.
-    # Used as Dramatiq RedisBroker.namespace and app.core.redis_keys helper.
     redis_prefix: str = "renderpop_server_"
     session_secret: str = Field(default="change-me-to-a-long-random-string", min_length=8)
 
@@ -34,13 +33,23 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = "http://localhost:3000/api/v1/auth/google/callback"
 
+    # Dodo Payments: test_mode uses sandbox products; live_mode uses live products.
     dodo_api_key: str = ""
     dodo_webhook_key: str = ""
+    dodo_environment: str = "test_mode"  # test_mode | live_mode
+    dodo_return_url: str = "http://localhost:3000/billing/success"
+    # Public base for provider webhooks (e.g. https://api.renderpop.app)
+    public_api_base_url: str = "http://localhost:8000"
+
     runninghub_api_key: str = ""
+    runninghub_base_url: str = "https://www.runninghub.ai"
 
     aws_region: str = "us-east-2"
     s3_bucket_name: str = "renderpop-assets"
     s3_asset_prefix: str = "media"
+
+    # Dev-only: X-Dev-User-Id header accepted when environment=development
+    allow_dev_auth: bool = True
 
     @property
     def is_production(self) -> bool:
@@ -49,6 +58,13 @@ class Settings(BaseSettings):
     @property
     def is_development(self) -> bool:
         return self.environment == "development"
+
+    @property
+    def product_environment(self) -> str:
+        """Map Dodo mode to products.environment column."""
+        if self.dodo_environment == "live_mode":
+            return "live"
+        return "sandbox"
 
 
 @lru_cache

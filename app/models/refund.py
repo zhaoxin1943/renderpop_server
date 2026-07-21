@@ -15,7 +15,7 @@ class Refund(TimestampedModel, table=True):
         default="pending",
         sa_column=Column(String(32), nullable=False, server_default="pending", index=True),
     )
-    amount_cents: int = Field(sa_column=Column(Integer, nullable=False))
+    amount_minor: int = Field(sa_column=Column(Integer, nullable=False))
     currency: str = Field(sa_column=Column(String(3), nullable=False, server_default="USD"))
     reason: str | None = Field(default=None, sa_column=Column(Text, nullable=True))
     provider_refund_id: str | None = Field(

@@ -1,11 +1,7 @@
 """
 Dramatiq actors.
 
-Import this module from the worker CLI so actors are registered:
   dramatiq app.workers.tasks
-
-Actors are async; they open their own short-lived AsyncSession
-(worker has no HTTP request scope).
 """
 
 from __future__ import annotations
@@ -25,7 +21,6 @@ ensure_broker()
 
 @dramatiq.actor(queue_name="default", max_retries=3)
 async def ping_worker() -> dict[str, str]:
-    """Smoke actor: verify Redis queue + async MySQL from worker process."""
     factory = get_session_factory()
     async with factory() as session:
         result = await session.execute(text("SELECT 1"))
@@ -37,10 +32,80 @@ async def ping_worker() -> dict[str, str]:
 
 @dramatiq.actor(queue_name="generation", max_retries=2, time_limit=1_800_000)
 async def run_generation_job(job_id: str) -> None:
-    """
-    Placeholder for image/video/dance generation.
+    """Submit task to RunningHub; poll until terminal if needed."""
+    from app.core.config import get_settings
+    from app.providers.runninghub import RunningHubClient
+    from app.repo.credit_repo import CreditRepo
+    from app.repo.generation_repo import GenerationRepo
+    from app.repo.subscription_repo import SubscriptionRepo
+    from app.repo.usage_repo import UsageRepo
+    from app.service.credit_service import CreditService
+    from app.service.entitlement_service import EntitlementService
+    from app.service.generation_service import GenerationService
 
-    Future: load job from MySQL, call provider, transfer to S3, ledger compensate.
-    time_limit is 30 minutes (ms) to cover ~20min video jobs.
-    """
-    logger.info("run_generation_job received job_id=%s (not implemented)", job_id)
+    factory = get_session_factory()
+    settings = get_settings()
+    async with factory() as session:
+        try:
+            gen = GenerationService(
+                GenerationRepo(session),
+                CreditService(CreditRepo(session)),
+                EntitlementService(
+                    SubscriptionRepo(session),
+                    UsageRepo(session),
+                    CreditService(CreditRepo(session)),
+                ),
+                settings,
+                rh=RunningHubClient(settings),
+            )
+            task = await gen.submit_to_provider(job_id)
+            # Poll a few times if still processing
+            if task.status == "PROCESSING" and task.provider_task_id:
+                import asyncio
+
+                for _ in range(30):
+                    await asyncio.sleep(2)
+                    task = await gen.poll_provider(job_id)
+                    if task.status in ("SUCCEEDED", "FAILED", "CANCELED", "REJECTED"):
+                        break
+            await session.commit()
+            logger.info("run_generation_job done job_id=%s status=%s", job_id, task.status)
+        except Exception:
+            await session.rollback()
+            logger.exception("run_generation_job failed job_id=%s", job_id)
+            raise
+
+
+@dramatiq.actor(queue_name="generation", max_retries=1)
+async def poll_generation_job(job_id: str) -> None:
+    from app.core.config import get_settings
+    from app.providers.runninghub import RunningHubClient
+    from app.repo.credit_repo import CreditRepo
+    from app.repo.generation_repo import GenerationRepo
+    from app.repo.subscription_repo import SubscriptionRepo
+    from app.repo.usage_repo import UsageRepo
+    from app.service.credit_service import CreditService
+    from app.service.entitlement_service import EntitlementService
+    from app.service.generation_service import GenerationService
+
+    factory = get_session_factory()
+    settings = get_settings()
+    async with factory() as session:
+        try:
+            gen = GenerationService(
+                GenerationRepo(session),
+                CreditService(CreditRepo(session)),
+                EntitlementService(
+                    SubscriptionRepo(session),
+                    UsageRepo(session),
+                    CreditService(CreditRepo(session)),
+                ),
+                settings,
+                rh=RunningHubClient(settings),
+            )
+            task = await gen.poll_provider(job_id)
+            await session.commit()
+            logger.info("poll_generation_job job_id=%s status=%s", job_id, task.status)
+        except Exception:
+            await session.rollback()
+            raise

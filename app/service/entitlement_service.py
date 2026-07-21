@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
 
 from app.core.commerce import (
     CONCURRENT_JOB_LIMITS,
@@ -16,6 +15,8 @@ from app.core.commerce import (
 from app.models.subscription import Subscription
 from app.repo.subscription_repo import SubscriptionRepo
 from app.repo.usage_repo import UsageRepo
+from app.schemas.credit import CreditBalanceResponse
+from app.schemas.me import EntitlementsResponse, FastImageQuotaResponse
 from app.service.credit_service import CreditService
 
 
@@ -60,7 +61,9 @@ class EntitlementService:
                 best = s.plan_code
         return best
 
-    async def get_entitlements(self, user_id: str | None, visitor_id: str | None = None) -> dict[str, Any]:
+    async def get_entitlements(
+        self, user_id: str | None, visitor_id: str | None = None
+    ) -> EntitlementsResponse:
         plan = await self.resolve_plan(user_id) if user_id else PLAN_FREE
         if not user_id:
             plan_key = "VISITOR"
@@ -91,7 +94,9 @@ class EntitlementService:
         credits = (
             await self._credits.get_balance(user_id)
             if user_id
-            else {"available": 0, "reserved": 0, "expiring_soon": 0, "next_expiration_at": None}
+            else CreditBalanceResponse(
+                available=0, reserved=0, expiring_soon=0, next_expiration_at=None
+            )
         )
 
         membership_active = plan in (PLAN_CREATOR, PLAN_PRO)
@@ -106,21 +111,21 @@ class EntitlementService:
 
         resets = datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=UTC)
 
-        return {
-            "plan": plan if user_id else "VISITOR",
-            "membership_active": membership_active,
-            "current_period_end": period_end.isoformat() if period_end else None,
-            "fast_image": {
-                "daily_limit": daily_limit,
-                "used": used,
-                "remaining": max(0, daily_limit - used),
-                "resets_at": resets.isoformat(),
-            },
-            "credits": credits,
-            "concurrent_job_limit": CONCURRENT_JOB_LIMITS.get(
+        return EntitlementsResponse(
+            plan=plan if user_id else "VISITOR",
+            membership_active=membership_active,
+            current_period_end=period_end,
+            fast_image=FastImageQuotaResponse(
+                daily_limit=daily_limit,
+                used=used,
+                remaining=max(0, daily_limit - used),
+                resets_at=resets,
+            ),
+            credits=credits,
+            concurrent_job_limit=CONCURRENT_JOB_LIMITS.get(
                 plan_key if user_id else "VISITOR", 1
             ),
-        }
+        )
 
     async def consume_fast_quota(
         self,

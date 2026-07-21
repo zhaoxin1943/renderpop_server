@@ -1,5 +1,3 @@
-from typing import Any
-
 from fastapi import APIRouter
 
 from app.core.deps import (
@@ -8,35 +6,37 @@ from app.core.deps import (
     OptionalUserIdDep,
     UserIdDep,
 )
+from app.schemas.credit import CreditTransactionListResponse
+from app.schemas.me import EntitlementsResponse, MeResponse, UserSummary
 
 router = APIRouter(prefix="/v1", tags=["me"])
 
 
-@router.get("/me")
-async def me(user_id: OptionalUserIdDep) -> dict[str, Any]:
+@router.get("/me", response_model=MeResponse)
+async def me(user_id: OptionalUserIdDep) -> MeResponse:
     if not user_id:
-        return {"authenticated": False, "user": None}
-    return {
-        "authenticated": True,
-        "user": {"id": user_id},
-        "auth_note": "placeholder — Google OAuth not wired",
-    }
+        return MeResponse(authenticated=False, user=None)
+    return MeResponse(
+        authenticated=True,
+        user=UserSummary(id=user_id),
+        auth_note="placeholder — Google OAuth not wired",
+    )
 
 
-@router.get("/me/entitlements")
+@router.get("/me/entitlements", response_model=EntitlementsResponse)
 async def entitlements(
     user_id: OptionalUserIdDep,
     service: EntitlementServiceDep,
-) -> dict[str, Any]:
+) -> EntitlementsResponse:
     return await service.get_entitlements(user_id=user_id, visitor_id=None)
 
 
-@router.get("/me/credit-transactions")
+@router.get("/me/credit-transactions", response_model=CreditTransactionListResponse)
 async def credit_transactions(
     user_id: UserIdDep,
     service: CreditServiceDep,
     limit: int = 50,
     offset: int = 0,
-) -> dict[str, Any]:
+) -> CreditTransactionListResponse:
     items = await service.list_transactions(user_id, limit=min(limit, 100), offset=offset)
-    return {"items": items}
+    return CreditTransactionListResponse(items=items)

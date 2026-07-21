@@ -1,8 +1,53 @@
 # RenderPop Server — 交接总结
 
-> 更新日期：2026-07-20  
+> 更新日期：2026-07-21  
 > 用途：新会话 / 新窗口先读本文，再动手写代码。  
-> 前端与产品文档在：`/Users/zx/web_workspace/renderpop`（尤其 `docs/HANDOFF.md`）。
+> 产品 PRD：`docs/RenderPop_Backend_PRD_v1.0.md`  
+> 生图 API：`docs/fast_api.md` / `docs/pro_api.md`  
+> 前端与产品文档在：`/Users/zx/web_workspace/renderpop`。
+
+---
+
+## 2026-07-21 实现进度（会员 / 积分 / 生图 / 支付骨架）
+
+### 已落地
+
+- **Face-swap 业务废弃**；领域模型改为 Credits + 月会员 + Fast/Pro 生图
+- 表：`products`(含 `environment` sandbox|live)、`credit_grants` / `credit_transactions` / `credit_reservations`、`subscriptions`、`generation_tasks`、`orders`、`payment_events` 等
+- 迁移：`alembic/versions/20260721_0001_credits_membership_generation.py`（已 upgrade）
+- 商品 seed：`python -m scripts.seed_products`（5 SKU；sandbox 已填 Dodo product id；live 占位 `REPLACE_ME_*`）
+- Credit：FEFO 冻结/结算/释放；会员积分与积分包**同一钱包合并消费**
+- Generation：Fast（日额度）/ Pro（12 credits）；RH adapter + webhook 路由 + poll；S3 转存 **stub**
+- Billing：Dodo checkout session（无 key 时 stub URL）+ webhook 验签/幂等发货骨架
+- 登录：**占位** — dev 用 `X-Dev-User-Id` + `POST /api/v1/dev/users` / `grant-credits`
+
+### 5 个 SKU
+
+| code | 类型 | 积分 | 沙箱 Dodo id |
+|------|------|------|----------------|
+| CREATOR_MONTHLY | 月订阅 $9.99 | 1000/期 | pdt_0NjeYw0jgwlkQVQqGtrVr |
+| PRO_MONTHLY | 月订阅 $19.99 | 2400/期 | pdt_0NjeZBaaoslC6lRSEusue |
+| CREDIT_400/900/2000 | 一次性 | 400/900/2000 | 见 seed |
+
+### 关键 API
+
+- `GET /api/v1/me` · `GET /api/v1/me/entitlements` · `GET /api/v1/me/credit-transactions`
+- `POST /api/v1/generations` · `GET .../{id}` · `POST .../{id}/poll`
+- `GET /api/v1/billing/products` · `POST /api/v1/billing/checkout-sessions`
+- `POST /api/v1/billing/webhooks/dodo` · `POST /api/v1/webhooks/generation/runninghub`
+- Dev：`POST /api/v1/dev/users` · `POST /api/v1/dev/grant-credits`
+
+### 仍占位 / 下一步
+
+1. Google OAuth + Session  
+2. S3 真实转存 RH 结果（24h URL）  
+3. Dodo webhook 签名字段与真实 payload 字段对齐（联调 test_mode）  
+4. 游客 Cookie 签发（现用 `X-Visitor-Id`）  
+5. 内容审核、watchdog、Admin  
+
+### 配置新增
+
+`DODO_ENVIRONMENT`（test_mode|live_mode）、`PUBLIC_API_BASE_URL`、`RUNNINGHUB_BASE_URL`
 
 ---
 

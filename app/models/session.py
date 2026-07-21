@@ -12,7 +12,6 @@ class Session(TimestampedModel, table=True):
     __tablename__ = "sessions"
 
     user_id: str = Field(foreign_key="users.id", index=True, max_length=36, nullable=False)
-    # SHA-256 hex of the raw session token
     token_hash: str = Field(sa_column=Column(String(64), unique=True, nullable=False, index=True))
     expires_at: datetime = Field(
         sa_column=Column(DateTime(timezone=True), nullable=False, index=True)

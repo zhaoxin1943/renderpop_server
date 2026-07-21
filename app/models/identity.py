@@ -15,6 +15,5 @@ class Identity(CreatedModel, table=True):
     user_id: str = Field(foreign_key="users.id", index=True, max_length=36, nullable=False)
     # google | email | …
     provider: str = Field(sa_column=Column(String(32), nullable=False, index=True))
-    # Google `sub`, or normalized email for email provider
     provider_subject: str = Field(sa_column=Column(String(255), nullable=False))
     email: str | None = Field(default=None, sa_column=Column(String(320), nullable=True))

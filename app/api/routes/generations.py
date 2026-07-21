@@ -1,23 +1,14 @@
-from typing import Any
-
 from fastapi import APIRouter, BackgroundTasks, Header, Response, status
-from pydantic import BaseModel, Field
 
 from app.core.deps import GenerationServiceDep, OptionalUserIdDep, SettingsDep
 from app.core.errors import AppError
+from app.schemas.generation import CreateGenerationBody, GenerationTaskResponse
 from app.workers.tasks import run_generation_job
 
 router = APIRouter(prefix="/v1/generations", tags=["generations"])
 
 
-class CreateGenerationBody(BaseModel):
-    job_type: str = Field(description="FAST_IMAGE | PRO_IMAGE")
-    prompt: str
-    aspect_ratio: str = "1:1"
-    client_request_id: str | None = None
-
-
-@router.post("", status_code=status.HTTP_202_ACCEPTED)
+@router.post("", response_model=GenerationTaskResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_generation(
     body: CreateGenerationBody,
     response: Response,
@@ -27,7 +18,7 @@ async def create_generation(
     background: BackgroundTasks,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     x_visitor_id: str | None = Header(default=None, alias="X-Visitor-Id"),
-) -> dict[str, Any]:
+) -> GenerationTaskResponse:
     key = idempotency_key or body.client_request_id
     if not key:
         raise AppError("VALIDATION_ERROR", "Idempotency-Key or client_request_id required", 422)
@@ -54,12 +45,7 @@ async def create_generation(
             raise
 
     response.status_code = status.HTTP_202_ACCEPTED
-    return {
-        "job_id": task.id,
-        "status": task.status,
-        "credits_reserved": task.credits_reserved,
-        "created_at": task.created_at.isoformat() if task.created_at else None,
-    }
+    return service.to_public(task)
 
 
 async def _run_inline(task_id: str) -> None:
@@ -97,22 +83,22 @@ async def _run_inline(task_id: str) -> None:
             raise
 
 
-@router.get("/{job_id}")
+@router.get("/{job_id}", response_model=GenerationTaskResponse)
 async def get_generation(
     job_id: str,
     service: GenerationServiceDep,
     user_id: OptionalUserIdDep,
-) -> dict[str, Any]:
+) -> GenerationTaskResponse:
     task = await service.get_task(job_id, user_id=user_id)
     return service.to_public(task)
 
 
-@router.post("/{job_id}/poll")
+@router.post("/{job_id}/poll", response_model=GenerationTaskResponse)
 async def poll_generation(
     job_id: str,
     service: GenerationServiceDep,
     user_id: OptionalUserIdDep,
-) -> dict[str, Any]:
+) -> GenerationTaskResponse:
     """Manual poll of RunningHub (also used by worker)."""
     await service.get_task(job_id, user_id=user_id)
     task = await service.poll_provider(job_id)

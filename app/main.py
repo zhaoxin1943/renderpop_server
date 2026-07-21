@@ -1,11 +1,14 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
 from app.core.config import get_settings
 from app.core.db import dispose_engine
+from app.core.errors import AppError
+from app.schemas.common import ErrorResponse
 from app.workers.broker import configure_broker
 
 
@@ -30,9 +33,24 @@ def create_app() -> FastAPI:
         allow_origins=[settings.web_origin],
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
+        allow_headers=[
+            "Authorization",
+            "Content-Type",
+            "Idempotency-Key",
+            "X-Dev-User-Id",
+            "X-Visitor-Id",
+        ],
     )
     application.include_router(api_router, prefix=settings.api_prefix)
+
+    @application.exception_handler(AppError)
+    async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
+        body = ErrorResponse(code=exc.code, message=exc.message)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=body.model_dump(),
+        )
+
     return application
 
 

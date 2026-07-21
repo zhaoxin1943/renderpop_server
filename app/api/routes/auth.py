@@ -1,15 +1,10 @@
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
-from pydantic import BaseModel
 
 from app.core.deps import SettingsDep
+from app.schemas.me import MeResponse
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
-
-
-class MeResponse(BaseModel):
-    authenticated: bool
-    user: dict | None = None
 
 
 @router.get("/me", response_model=MeResponse)

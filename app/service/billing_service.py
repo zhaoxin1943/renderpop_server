@@ -17,6 +17,11 @@ from app.providers.dodo import DodoClient
 from app.repo.order_repo import OrderRepo
 from app.repo.product_repo import ProductRepo
 from app.repo.subscription_repo import SubscriptionRepo
+from app.schemas.billing import (
+    CheckoutSessionResponse,
+    DodoWebhookResponse,
+    ProductResponse,
+)
 from app.service.credit_service import CreditService
 
 logger = logging.getLogger(__name__)
@@ -42,20 +47,20 @@ class BillingService:
     def _env(self) -> str:
         return self._settings.product_environment
 
-    async def list_products(self) -> list[dict[str, Any]]:
+    async def list_products(self) -> list[ProductResponse]:
         rows = await self._products.list_active(self._env())
         return [
-            {
-                "code": p.code,
-                "name": p.name,
-                "product_type": p.product_type,
-                "plan_code": p.plan_code,
-                "billing_interval": p.billing_interval,
-                "credits_granted": p.credits_granted,
-                "amount_minor": p.amount_minor,
-                "currency": p.currency,
-                "environment": p.environment,
-            }
+            ProductResponse(
+                code=p.code,
+                name=p.name,
+                product_type=p.product_type,
+                plan_code=p.plan_code,
+                billing_interval=p.billing_interval,
+                credits_granted=p.credits_granted,
+                amount_minor=p.amount_minor,
+                currency=p.currency,
+                environment=p.environment,
+            )
             for p in rows
         ]
 
@@ -77,16 +82,16 @@ class BillingService:
         success_url: str | None,
         customer_email: str | None = None,
         customer_name: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> CheckoutSessionResponse:
         existing = await self._orders.get_by_idempotency(user_id, idempotency_key)
         if existing and existing.provider_checkout_id:
-            return {
-                "order_id": existing.id,
-                "status": existing.status,
-                "checkout_url": None,
-                "session_id": existing.provider_checkout_id,
-                "reused": True,
-            }
+            return CheckoutSessionResponse(
+                order_id=existing.id,
+                status=existing.status,
+                checkout_url=None,
+                session_id=existing.provider_checkout_id,
+                reused=True,
+            )
 
         product = await self._products.get_by_code(self._env(), product_code)
         if product is None or not product.is_active:
@@ -140,14 +145,14 @@ class BillingService:
         order.provider_checkout_id = session.get("session_id")
         await self._orders.session.flush()
 
-        return {
-            "order_id": order.id,
-            "status": order.status,
-            "checkout_url": session.get("checkout_url"),
-            "session_id": session.get("session_id"),
-            "reused": False,
-            "stub": bool(session.get("_stub")),
-        }
+        return CheckoutSessionResponse(
+            order_id=order.id,
+            status=order.status,
+            checkout_url=session.get("checkout_url"),
+            session_id=session.get("session_id"),
+            reused=False,
+            stub=bool(session.get("_stub")),
+        )
 
     async def process_webhook(
         self,
@@ -155,11 +160,11 @@ class BillingService:
         raw_body: bytes,
         signature: str | None,
         payload: dict[str, Any],
-    ) -> dict[str, Any]:
+    ) -> DodoWebhookResponse:
         if not self._dodo.verify_webhook_signature(
             payload=raw_body, signature_header=signature
         ):
-            return {"ok": False, "error": "invalid_signature"}
+            return DodoWebhookResponse(ok=False, error="invalid_signature")
 
         event_type = str(payload.get("type") or payload.get("event_type") or "")
         # Dodo-style: data object may nest under data
@@ -173,7 +178,7 @@ class BillingService:
 
         existing = await self._orders.get_event("dodo", event_id)
         if existing and existing.status == "PROCESSED":
-            return {"ok": True, "duplicate": True}
+            return DodoWebhookResponse(ok=True, duplicate=True)
 
         if existing is None:
             event = PaymentEvent(
@@ -204,7 +209,7 @@ class BillingService:
             raise
 
         await self._orders.session.flush()
-        return {"ok": True, "event_id": event_id, "type": event_type}
+        return DodoWebhookResponse(ok=True, event_id=event_id, type=event_type)
 
     async def _dispatch_event(
         self, event_type: str, data: dict[str, Any], event: PaymentEvent

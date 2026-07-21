@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.core.deps import HealthServiceDep
+from app.schemas.common import LiveStatus
 from app.schemas.health import HealthStatus
 
 router = APIRouter()
@@ -12,7 +13,7 @@ async def health(service: HealthServiceDep) -> HealthStatus:
     return await service.check()
 
 
-@router.get("/health/live")
-async def live() -> dict[str, str]:
+@router.get("/health/live", response_model=LiveStatus)
+async def live() -> LiveStatus:
     """Process liveness without DB (for k8s/docker)."""
-    return {"status": "alive"}
+    return LiveStatus(status="alive")

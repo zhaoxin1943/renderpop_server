@@ -26,6 +26,7 @@ from app.models.base import new_id, utc_now
 from app.models.generation_task import GenerationAttempt, GenerationTask
 from app.providers.runninghub import RunningHubClient, transfer_result_to_s3_stub
 from app.repo.generation_repo import GenerationRepo
+from app.schemas.generation import GenerationTaskResponse
 from app.service.credit_service import CreditService
 from app.service.entitlement_service import EntitlementService
 
@@ -303,21 +304,21 @@ class GenerationService:
                 user_id=task.user_id, visitor_id=task.visitor_id
             )
 
-    def to_public(self, task: GenerationTask) -> dict[str, Any]:
+    def to_public(self, task: GenerationTask) -> GenerationTaskResponse:
         result_urls = None
         if task.provider_raw_result and isinstance(task.provider_raw_result, dict):
             results = task.provider_raw_result.get("results")
             if results:
                 result_urls = [r.get("url") for r in results if r.get("url")]
-        return {
-            "job_id": task.id,
-            "task_type": task.task_type,
-            "status": task.status,
-            "aspect_ratio": task.aspect_ratio,
-            "credits_reserved": task.credits_reserved,
-            "result_transfer_status": task.result_transfer_status,
-            "result_urls": result_urls,
-            "failure_code": task.failure_code,
-            "created_at": task.created_at.isoformat() if task.created_at else None,
-            "completed_at": task.completed_at.isoformat() if task.completed_at else None,
-        }
+        return GenerationTaskResponse(
+            job_id=task.id,
+            task_type=task.task_type,
+            status=task.status,
+            aspect_ratio=task.aspect_ratio,
+            credits_reserved=task.credits_reserved,
+            result_transfer_status=task.result_transfer_status,
+            result_urls=result_urls,
+            failure_code=task.failure_code,
+            created_at=task.created_at,
+            completed_at=task.completed_at,
+        )

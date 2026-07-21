@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 from app.core.commerce import (
     CREDIT_PACK_EXPIRE_DAYS,
@@ -15,28 +14,29 @@ from app.core.commerce import (
     SUBSCRIPTION_CREDITS,
 )
 from app.core.errors import InsufficientCredits
+from app.models.base import new_id
 from app.models.credit import (
     CreditGrant,
     CreditReservation,
     CreditReservationItem,
     CreditTransaction,
 )
-from app.models.base import new_id
 from app.repo.credit_repo import CreditRepo
+from app.schemas.credit import CreditBalanceResponse, CreditTransactionResponse
 
 
 class CreditService:
     def __init__(self, repo: CreditRepo) -> None:
         self._repo = repo
 
-    async def get_balance(self, user_id: str) -> dict[str, Any]:
+    async def get_balance(self, user_id: str) -> CreditBalanceResponse:
         available, reserved, expiring_soon, next_exp = await self._repo.sum_balances(user_id)
-        return {
-            "available": available,
-            "reserved": reserved,
-            "expiring_soon": expiring_soon,
-            "next_expiration_at": next_exp.isoformat() if next_exp else None,
-        }
+        return CreditBalanceResponse(
+            available=available,
+            reserved=reserved,
+            expiring_soon=expiring_soon,
+            next_expiration_at=next_exp,
+        )
 
     async def grant_signup_bonus(self, user_id: str) -> CreditGrant | None:
         key = f"signup_bonus:{user_id}"
@@ -416,24 +416,25 @@ class CreditService:
 
     async def list_transactions(
         self, user_id: str, *, limit: int = 50, offset: int = 0
-    ) -> list[dict[str, Any]]:
+    ) -> list[CreditTransactionResponse]:
         rows = await self._repo.list_transactions(user_id, limit=limit, offset=offset)
-        out: list[dict[str, Any]] = []
+        out: list[CreditTransactionResponse] = []
         for t in rows:
-            sign = -1 if t.type in ("RESERVE", "CAPTURE", "EXPIRE", "REVOKE") else 1
-            if t.type == "RELEASE":
-                sign = 1
-            if t.type == "GRANT":
-                sign = 1
             # User-facing: CAPTURE = spend; RESERVE = hold; RELEASE = refund hold
+            if t.type == "RESERVE":
+                amount = -t.amount
+            elif t.type in ("CAPTURE", "EXPIRE", "REVOKE"):
+                amount = -t.amount
+            else:
+                amount = t.amount
             out.append(
-                {
-                    "id": t.id,
-                    "type": t.type,
-                    "amount": sign * t.amount if t.type != "RESERVE" else -t.amount,
-                    "generation_task_id": t.generation_task_id,
-                    "created_at": t.created_at.isoformat() if t.created_at else None,
-                    "metadata": t.metadata_json,
-                }
+                CreditTransactionResponse(
+                    id=t.id,
+                    type=t.type,
+                    amount=amount,
+                    generation_task_id=t.generation_task_id,
+                    created_at=t.created_at,
+                    metadata=t.metadata_json,
+                )
             )
         return out
