@@ -88,6 +88,31 @@ class CreditService:
             metadata={"product_code": product_code, "payment_id": payment_id},
         )
 
+    async def grant_compensation(
+        self,
+        *,
+        user_id: str,
+        amount: int,
+        reason: str = "compensation",
+        expires_days: int = 90,
+        idempotency_key: str | None = None,
+    ) -> CreditGrant:
+        """Manual / admin / dev compensation credits."""
+        key = idempotency_key or f"compensation:{user_id}:{new_id()}"
+        existing = await self._repo.get_grant_by_idempotency(key)
+        if existing:
+            return existing
+        return await self._grant(
+            user_id=user_id,
+            grant_type=CreditGrantType.COMPENSATION,
+            amount=amount,
+            expires_at=datetime.now(UTC) + timedelta(days=expires_days),
+            source_type=CreditSourceType.ADMIN,
+            source_id=new_id(),
+            idempotency_key=key,
+            metadata={"reason": reason},
+        )
+
     async def grant_subscription_period(
         self,
         *,

@@ -25,6 +25,7 @@ from app.repo.generation_repo import GenerationRepo
 from app.repo.health_repo import HealthRepo
 from app.repo.order_repo import OrderRepo
 from app.repo.product_repo import ProductRepo
+from app.repo.showcase_repo import ShowcaseRepo
 from app.repo.subscription_repo import SubscriptionRepo
 from app.repo.usage_repo import UsageRepo
 from app.repo.user_repo import UserRepo
@@ -32,9 +33,11 @@ from app.service.asset_service import AssetService
 from app.service.auth_service import SESSION_COOKIE_NAME, AuthService
 from app.service.billing_service import BillingService
 from app.service.credit_service import CreditService
+from app.service.dev_service import DevService
 from app.service.entitlement_service import EntitlementService
 from app.service.generation_service import GenerationService
 from app.service.health_service import HealthService
+from app.service.showcase_service import ShowcaseService
 
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -83,6 +86,10 @@ def get_usage_repo(session: SessionDep) -> UsageRepo:
     return UsageRepo(session)
 
 
+def get_showcase_repo(session: SessionDep) -> ShowcaseRepo:
+    return ShowcaseRepo(session)
+
+
 HealthRepoDep = Annotated[HealthRepo, Depends(get_health_repo)]
 UserRepoDep = Annotated[UserRepo, Depends(get_user_repo)]
 CreditRepoDep = Annotated[CreditRepo, Depends(get_credit_repo)]
@@ -92,6 +99,7 @@ SubscriptionRepoDep = Annotated[SubscriptionRepo, Depends(get_subscription_repo)
 GenerationRepoDep = Annotated[GenerationRepo, Depends(get_generation_repo)]
 GenerationModelRepoDep = Annotated[GenerationModelRepo, Depends(get_generation_model_repo)]
 UsageRepoDep = Annotated[UsageRepo, Depends(get_usage_repo)]
+ShowcaseRepoDep = Annotated[ShowcaseRepo, Depends(get_showcase_repo)]
 
 
 # --- services ---
@@ -165,6 +173,18 @@ def get_auth_service(users: UserRepoDep, settings: SettingsDep) -> AuthService:
     return AuthService(users, settings)
 
 
+def get_showcase_service(repo: ShowcaseRepoDep) -> ShowcaseService:
+    return ShowcaseService(repo)
+
+
+def get_dev_service(
+    users: UserRepoDep,
+    credits: Annotated[CreditService, Depends(get_credit_service)],
+    settings: SettingsDep,
+) -> DevService:
+    return DevService(users, credits, settings)
+
+
 HealthServiceDep = Annotated[HealthService, Depends(get_health_service)]
 CreditServiceDep = Annotated[CreditService, Depends(get_credit_service)]
 EntitlementServiceDep = Annotated[EntitlementService, Depends(get_entitlement_service)]
@@ -172,6 +192,8 @@ GenerationServiceDep = Annotated[GenerationService, Depends(get_generation_servi
 AssetServiceDep = Annotated[AssetService, Depends(get_asset_service)]
 BillingServiceDep = Annotated[BillingService, Depends(get_billing_service)]
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
+ShowcaseServiceDep = Annotated[ShowcaseService, Depends(get_showcase_service)]
+DevServiceDep = Annotated[DevService, Depends(get_dev_service)]
 
 
 # --- auth ---

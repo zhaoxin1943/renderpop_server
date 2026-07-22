@@ -1,9 +1,9 @@
 from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import RedirectResponse
 
-from app.core.deps import AuthServiceDep, OptionalUserIdDep, SettingsDep, UserRepoDep
+from app.core.deps import AuthServiceDep, OptionalUserIdDep, SettingsDep
 from app.core.errors import AppError, AuthRequired
-from app.schemas.me import MeResponse, UserSummary
+from app.schemas.me import MeResponse
 from app.service.auth_service import SESSION_COOKIE_NAME
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
@@ -12,22 +12,9 @@ router = APIRouter(prefix="/v1/auth", tags=["auth"])
 @router.get("/me", response_model=MeResponse)
 async def auth_me(
     user_id: OptionalUserIdDep,
-    users: UserRepoDep,
+    auth: AuthServiceDep,
 ) -> MeResponse:
-    if not user_id:
-        return MeResponse(authenticated=False, user=None)
-    user = await users.get_by_id(user_id)
-    if user is None:
-        return MeResponse(authenticated=False, user=None)
-    return MeResponse(
-        authenticated=True,
-        user=UserSummary(
-            id=user.id,
-            email=user.email,
-            display_name=user.display_name,
-            avatar_url=user.avatar_url,
-        ),
-    )
+    return await auth.get_me(user_id)
 
 
 @router.get("/google/start")

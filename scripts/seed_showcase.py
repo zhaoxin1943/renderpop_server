@@ -3,12 +3,14 @@ Upload local waterfall assets to S3 (public media/showcase/*) and upsert DB rows
 
 Default source folder:
   /Users/zx/Desktop/image
-  - N.jpeg|png  +  N.txt (prompt; English preferred)
+  - N.jpeg|jpg|png|webp  +  N.txt (prompt; English preferred)
 
 Usage:
   conda activate renderpop
   python -m scripts.seed_showcase
   python -m scripts.seed_showcase --source /path/to/images
+  python -m scripts.seed_showcase --start 18 --end 24
+  python -m scripts.seed_showcase --start 18 --end 24 --dry-run
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import mimetypes
+import re
 import sys
 from math import gcd
 from pathlib import Path
@@ -49,6 +52,13 @@ _TITLES: dict[int, str] = {
     15: "Hotel Suite Soft Portrait",
     16: "Concrete Stairs Street Fashion",
     17: "Gaze Lingering on the Lips",
+    18: "Hotel Balcony Satin Dress",
+    19: "Ocean Sunset Micro Bikini",
+    20: "Morning Sofa White Shirt",
+    21: "Post-Workout Gym Portrait",
+    22: "Office Desk Pencil Skirt",
+    23: "Nightclub Sequin Mini Dress",
+    24: "Asian Black Dress Fashion Portrait",
 }
 
 _IMAGE_EXTS = (".jpeg", ".jpg", ".png", ".webp")
@@ -134,9 +144,11 @@ def _title_for(n: int, prompt: str) -> str:
     return " ".join(words[:6]).title() or f"Showcase {n}"
 
 
-def collect_items(source: Path) -> list[dict]:
+def collect_items(source: Path, *, start: int = 1, end: int = 24) -> list[dict]:
+    if start < 1 or end < start:
+        raise ValueError(f"invalid range: start={start} end={end}")
     items: list[dict] = []
-    for n in range(1, 18):
+    for n in range(start, end + 1):
         image = _find_image(source, n)
         if image is None:
             raise FileNotFoundError(f"missing image for index {n} under {source}")
@@ -235,9 +247,16 @@ async def upsert_row(session: AsyncSession, item: dict, storage_key: str, image_
     return f"created #{item['sort_order']} {item['title']}"
 
 
-async def run(source: Path, *, dry_run: bool = False) -> None:
-    items = collect_items(source)
-    print(f"collected {len(items)} assets from {source}")
+async def run(
+    source: Path,
+    *,
+    start: int = 1,
+    end: int = 24,
+    dry_run: bool = False,
+    skip_legacy_cleanup: bool = False,
+) -> None:
+    items = collect_items(source, start=start, end=end)
+    print(f"collected {len(items)} assets from {source} (#{start}-#{end})")
 
     storage = get_s3_storage()
     if not storage.configured:
@@ -255,8 +274,9 @@ async def run(source: Path, *, dry_run: bool = False) -> None:
 
     factory = get_session_factory()
     async with factory() as session:
-        deleted = await soft_delete_legacy(session)
-        print(f"soft-deleted {deleted} legacy showcase row(s)")
+        if not skip_legacy_cleanup:
+            deleted = await soft_delete_legacy(session)
+            print(f"soft-deleted {deleted} legacy showcase row(s)")
 
         for item in items:
             key, url = upload_item(storage, item)
@@ -275,17 +295,42 @@ def main() -> None:
         "--source",
         type=Path,
         default=Path("/Users/zx/Desktop/image"),
-        help="Folder with N.jpeg|png + N.txt",
+        help="Folder with N.jpeg|jpg|png|webp + N.txt",
+    )
+    parser.add_argument(
+        "--start",
+        type=int,
+        default=1,
+        help="First asset index inclusive (default: 1)",
+    )
+    parser.add_argument(
+        "--end",
+        type=int,
+        default=24,
+        help="Last asset index inclusive (default: 24)",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Parse assets and print plan without S3/DB writes",
     )
+    parser.add_argument(
+        "--skip-legacy-cleanup",
+        action="store_true",
+        help="Do not soft-delete rows that lack storage_key",
+    )
     args = parser.parse_args()
     if not args.source.is_dir():
         raise SystemExit(f"source folder not found: {args.source}")
-    asyncio.run(run(args.source, dry_run=args.dry_run))
+    asyncio.run(
+        run(
+            args.source,
+            start=args.start,
+            end=args.end,
+            dry_run=args.dry_run,
+            skip_legacy_cleanup=args.skip_legacy_cleanup,
+        )
+    )
 
 
 if __name__ == "__main__":

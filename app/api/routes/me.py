@@ -3,34 +3,21 @@ from typing import Annotated
 from fastapi import APIRouter, Header
 
 from app.core.deps import (
+    AuthServiceDep,
     CreditServiceDep,
     EntitlementServiceDep,
     OptionalUserIdDep,
     UserIdDep,
-    UserRepoDep,
 )
 from app.schemas.credit import CreditTransactionListResponse
-from app.schemas.me import EntitlementsResponse, MeResponse, UserSummary
+from app.schemas.me import EntitlementsResponse, MeResponse
 
 router = APIRouter(prefix="/v1", tags=["me"])
 
 
 @router.get("/me", response_model=MeResponse)
-async def me(user_id: OptionalUserIdDep, users: UserRepoDep) -> MeResponse:
-    if not user_id:
-        return MeResponse(authenticated=False, user=None)
-    user = await users.get_by_id(user_id)
-    if user is None:
-        return MeResponse(authenticated=False, user=None)
-    return MeResponse(
-        authenticated=True,
-        user=UserSummary(
-            id=user.id,
-            email=user.email,
-            display_name=user.display_name,
-            avatar_url=user.avatar_url,
-        ),
-    )
+async def me(user_id: OptionalUserIdDep, auth: AuthServiceDep) -> MeResponse:
+    return await auth.get_me(user_id)
 
 
 @router.get("/me/entitlements", response_model=EntitlementsResponse)

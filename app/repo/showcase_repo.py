@@ -1,3 +1,5 @@
+import random
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,14 +11,12 @@ class ShowcaseRepo:
         self.session = session
 
     async def list_active(self, *, limit: int = 24) -> list[ShowcaseItem]:
-        stmt = (
-            select(ShowcaseItem)
-            .where(
-                ShowcaseItem.is_active.is_(True),
-                ShowcaseItem.deleted_at.is_(None),
-            )
-            .order_by(ShowcaseItem.sort_order.asc(), ShowcaseItem.created_at.desc())
-            .limit(limit)
+        """Return active showcase items in a shuffled order (fresh each request)."""
+        stmt = select(ShowcaseItem).where(
+            ShowcaseItem.is_active.is_(True),
+            ShowcaseItem.deleted_at.is_(None),
         )
         result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+        rows = list(result.scalars().all())
+        random.shuffle(rows)
+        return rows[:limit]

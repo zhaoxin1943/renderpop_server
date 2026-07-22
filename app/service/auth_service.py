@@ -20,6 +20,7 @@ from app.models.identity import Identity
 from app.models.session import Session
 from app.models.user import User
 from app.repo.user_repo import UserRepo
+from app.schemas.me import MeResponse, UserSummary
 
 logger = logging.getLogger(__name__)
 
@@ -229,6 +230,23 @@ class AuthService:
         if user.status != UserStatus.ACTIVE:
             return None
         return user
+
+    async def get_me(self, user_id: str | None) -> MeResponse:
+        """Current user profile for /me (and auth/me)."""
+        if not user_id:
+            return MeResponse(authenticated=False, user=None)
+        user = await self._users.get_by_id(user_id)
+        if user is None:
+            return MeResponse(authenticated=False, user=None)
+        return MeResponse(
+            authenticated=True,
+            user=UserSummary(
+                id=user.id,
+                email=user.email,
+                display_name=user.display_name,
+                avatar_url=user.avatar_url,
+            ),
+        )
 
     async def logout(self, raw_token: str | None) -> None:
         if not raw_token:

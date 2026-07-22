@@ -31,32 +31,9 @@ async def ping_worker() -> dict[str, str]:
 
 
 def _build_generation_service(session, settings):
-    from app.providers.pollo import PolloClient
-    from app.providers.runninghub import RunningHubClient
-    from app.providers.s3 import S3Storage
-    from app.repo.credit_repo import CreditRepo
-    from app.repo.generation_model_repo import GenerationModelRepo
-    from app.repo.generation_repo import GenerationRepo
-    from app.repo.subscription_repo import SubscriptionRepo
-    from app.repo.usage_repo import UsageRepo
-    from app.service.credit_service import CreditService
-    from app.service.entitlement_service import EntitlementService
-    from app.service.generation_service import GenerationService
+    from app.service.composition import build_generation_service
 
-    return GenerationService(
-        GenerationRepo(session),
-        CreditService(CreditRepo(session)),
-        EntitlementService(
-            SubscriptionRepo(session),
-            UsageRepo(session),
-            CreditService(CreditRepo(session)),
-        ),
-        settings,
-        rh=RunningHubClient(settings),
-        pollo=PolloClient(settings),
-        s3=S3Storage(settings),
-        model_repo=GenerationModelRepo(session),
-    )
+    return build_generation_service(session, settings)
 
 
 @dramatiq.actor(queue_name="generation", max_retries=2, time_limit=1_800_000)
