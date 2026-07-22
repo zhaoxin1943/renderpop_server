@@ -962,6 +962,20 @@ class GenerationService:
             credits = int(
                 cat["credits"] if cat["credits"] is not None else PRO_IMAGE_CREDITS
             )
+            quoted_resolution = ""
+            if task_type == TaskType.PRO_IMAGE_TO_IMAGE:
+                quoted_resolution = str(
+                    resolution
+                    if resolution is not None
+                    else (cat["default_resolution"] or PRO_I2I_DEFAULT_RESOLUTION)
+                )
+                allowed_resolutions = set(
+                    cat["resolutions"] or PRO_I2I_ALLOWED_RESOLUTIONS
+                )
+                if quoted_resolution not in allowed_resolutions:
+                    raise ValidationFailed(
+                        f"resolution must be one of {sorted(allowed_resolutions)}"
+                    )
             available = None
             can = None
             if user_id:
@@ -972,11 +986,7 @@ class GenerationService:
                 job_type=task_type,
                 credits_required=credits,
                 length=0,
-                resolution=(
-                    str(cat["default_resolution"] or PRO_I2I_DEFAULT_RESOLUTION)
-                    if task_type == TaskType.PRO_IMAGE_TO_IMAGE
-                    else ""
-                ),
+                resolution=quoted_resolution,
                 generate_audio=None,
                 can_generate=can,
                 available_credits=available,

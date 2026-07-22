@@ -39,6 +39,7 @@ def create_app() -> FastAPI:
             "Idempotency-Key",
             "X-Dev-User-Id",
             "X-Visitor-Id",
+            "X-Requested-With",
         ],
     )
     application.include_router(api_router, prefix=settings.api_prefix)

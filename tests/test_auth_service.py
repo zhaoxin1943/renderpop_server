@@ -48,6 +48,7 @@ def test_google_authorize_url_requires_complete_google_config() -> None:
     settings = Settings(
         session_secret="a-long-enough-test-session-secret",
         google_client_id="test-client-id",
+        google_client_secret="",
     )
     service = AuthService(UnusedUserRepo(), settings)  # type: ignore[arg-type]
 

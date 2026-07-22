@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import secrets
@@ -96,6 +97,46 @@ class AuthService:
             user_agent=user_agent,
         )
         return user, raw_token, return_to
+
+    async def complete_google_credential_login(
+        self,
+        *,
+        credential: str,
+        ip: str | None = None,
+        user_agent: str | None = None,
+    ) -> tuple[User, str]:
+        """Verify a GIS ID token, then create our normal server-side session."""
+        profile = await asyncio.to_thread(self._verify_google_id_token, credential)
+        user = await self._upsert_google_user(profile)
+        raw_token = await self.create_session(
+            user_id=user.id,
+            ip=ip,
+            user_agent=user_agent,
+        )
+        return user, raw_token
+
+    def _verify_google_id_token(self, credential: str) -> dict[str, Any]:
+        """Verify signature, issuer, audience, and expiry using Google's key set."""
+        if not self._settings.google_client_id:
+            raise ValidationFailed("Google OAuth is not configured", code="OAUTH_NOT_CONFIGURED")
+        try:
+            from google.auth.transport.requests import Request as GoogleRequest
+            from google.oauth2 import id_token
+
+            profile = id_token.verify_oauth2_token(
+                credential,
+                GoogleRequest(),
+                self._settings.google_client_id,
+                clock_skew_in_seconds=10,
+            )
+        except Exception as exc:
+            logger.warning("Google ID token verification failed: %s: %s", type(exc).__name__, exc, exc_info=True)
+            raise AuthRequired("Google credential could not be verified") from exc
+
+        issuer = profile.get("iss")
+        if issuer not in {"accounts.google.com", "https://accounts.google.com"}:
+            raise AuthRequired("Invalid Google credential issuer")
+        return dict(profile)
 
     async def _exchange_google_code(self, code: str) -> dict[str, Any]:
         if not self._settings.google_client_id or not self._settings.google_client_secret:

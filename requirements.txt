@@ -14,6 +14,8 @@ alembic==1.18.5
 dramatiq[redis]==2.2.0
 redis==8.0.1
 httpx==0.28.1
+google-auth==2.38.0
+requests==2.32.3
 python-multipart==0.0.32
 email-validator==2.3.0
 boto3==1.43.51
