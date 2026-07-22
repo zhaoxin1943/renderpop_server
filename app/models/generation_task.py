@@ -16,9 +16,10 @@ from app.models.enums import (
 
 class GenerationTask(TimestampedModel, table=True):
     """
-    Generation task (Fast/Pro image, AI video). Dance reserved for later.
+    Generation task (Fast/Pro image, AI video, Dance).
 
     User inputs + provider fields + result linkage.
+    Dance template_id / reference_video_asset_id live in input_params JSON.
     """
 
     __tablename__ = "generation_tasks"
@@ -64,7 +65,7 @@ class GenerationTask(TimestampedModel, table=True):
         default=None,
         sa_column=Column(String(64), nullable=True),
     )
-    # IMAGE_VIDEO input photo
+    # IMAGE_VIDEO / I2I / DANCE_VIDEO input photo
     input_asset_id: str | None = Field(
         default=None,
         foreign_key="assets.id",

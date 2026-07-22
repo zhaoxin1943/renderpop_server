@@ -1,4 +1,4 @@
-"""User asset upload intents (private S3) for IMAGE_VIDEO inputs."""
+"""User asset upload intents (private S3) for IMAGE_VIDEO / I2I / Dance inputs."""
 
 from __future__ import annotations
 
@@ -24,6 +24,21 @@ _ALLOWED_IMAGE_TYPES = frozenset(
         "image/webp",
     }
 )
+_ALLOWED_VIDEO_TYPES = frozenset(
+    {
+        "video/mp4",
+        "video/webm",
+        "video/quicktime",
+    }
+)
+
+# Image inputs (I2V / I2I / Dance photo): 20 MB
+_MAX_IMAGE_BYTES = 20_000_000
+# Dance reference video upload: 100 MB
+_MAX_VIDEO_BYTES = 100_000_000
+
+_IMAGE_PURPOSES = frozenset({"video_input", "input_image", "dance_photo"})
+_VIDEO_PURPOSES = frozenset({"dance_reference_video", "input_video"})
 
 
 class AssetService:
@@ -45,15 +60,37 @@ class AssetService:
         content_type = (content_type or "").split(";")[0].strip().lower()
         if content_type == "image/jpg":
             content_type = "image/jpeg"
-        if content_type not in _ALLOWED_IMAGE_TYPES:
+
+        purpose = (purpose or "video_input").strip()
+        if purpose in _IMAGE_PURPOSES:
+            if content_type not in _ALLOWED_IMAGE_TYPES:
+                raise ValidationFailed(
+                    f"content_type must be one of {sorted(_ALLOWED_IMAGE_TYPES)}"
+                )
+            if byte_size is not None and byte_size > _MAX_IMAGE_BYTES:
+                raise ValidationFailed(
+                    f"image must be at most {_MAX_IMAGE_BYTES} bytes"
+                )
+            asset_type = AssetType.INPUT_IMAGE
+            max_bytes = _MAX_IMAGE_BYTES
+        elif purpose in _VIDEO_PURPOSES:
+            if content_type not in _ALLOWED_VIDEO_TYPES:
+                raise ValidationFailed(
+                    f"content_type must be one of {sorted(_ALLOWED_VIDEO_TYPES)}"
+                )
+            if byte_size is not None and byte_size > _MAX_VIDEO_BYTES:
+                raise ValidationFailed(
+                    f"video must be at most {_MAX_VIDEO_BYTES} bytes"
+                )
+            asset_type = AssetType.INPUT_VIDEO
+            max_bytes = _MAX_VIDEO_BYTES
+        else:
             raise ValidationFailed(
-                f"content_type must be one of {sorted(_ALLOWED_IMAGE_TYPES)}"
+                "unsupported purpose; use video_input | input_image | dance_photo "
+                "| dance_reference_video | input_video"
             )
-        if purpose not in ("video_input", "input_image"):
-            raise ValidationFailed("unsupported purpose")
 
         if not self._s3.configured:
-            # Dev stub path: still create asset row with a fake key so flow can be tested
             logger.warning("S3 not configured; creating stub upload intent")
 
         ext = _ext_from_filename(filename, content_type)
@@ -66,7 +103,7 @@ class AssetService:
         asset = Asset(
             id=asset_id,
             owner_user_id=user_id,
-            asset_type=AssetType.INPUT_IMAGE,
+            asset_type=asset_type,
             storage_key=storage_key,
             mime_type=content_type,
             byte_size=byte_size,
@@ -88,8 +125,9 @@ class AssetService:
             storage_key=storage_key,
             headers={"Content-Type": content_type},
             expires_in=PRESIGNED_PUT_EXPIRES,
-            asset_type=AssetType.INPUT_IMAGE,
+            asset_type=asset_type,
             status=AssetStatus.UPLOADING,
+            max_byte_size=max_bytes,
         )
 
     async def complete_upload(
@@ -122,7 +160,11 @@ class AssetService:
 
 def _ext_from_filename(filename: str, content_type: str) -> str:
     suffix = PurePosixPath(filename or "").suffix.lstrip(".").lower()
-    if suffix in ("jpg", "jpeg", "png", "webp"):
-        return "jpg" if suffix == "jpeg" else suffix
-    guessed = mimetypes.guess_extension(content_type) or ".jpg"
-    return guessed.lstrip(".")[:16] or "jpg"
+    if suffix in ("jpg", "jpeg", "png", "webp", "mp4", "webm", "mov"):
+        if suffix == "jpeg":
+            return "jpg"
+        if suffix == "mov":
+            return "mp4"
+        return suffix
+    guessed = mimetypes.guess_extension(content_type) or ".bin"
+    return guessed.lstrip(".")[:16] or "bin"

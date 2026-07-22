@@ -8,11 +8,52 @@
 
 ---
 
+## 2026-07-22 Dance 视频（RunningHub）
+
+### 已落地
+
+- 任务类型：`DANCE_VIDEO`（登录 + 积分；游客不可生成）
+- RH app：`1975951975441412098`（`docs/dance.md`）
+- 节点：`299` 用户照片 URL；`275` 预置模板视频或用户上传参考视频；`451`/`450` 输出宽高比（须与参考视频一致）；其余节点保持文档默认
+- 积分：非会员 **120** / 有效会员 **100**（`generation_models.pricing_config` + plan 解析）
+- create 入参：`input_asset_id` + 二选一 `template_id` | `reference_video_asset_id` + `aspect_ratio`
+- 预置模板：`GET /api/v1/dance/templates`（常量 4 个，暂不建 `dance_templates` 表）
+- 上传：`purpose=dance_photo`（图）/ `dance_reference_video`（视频，`INPUT_VIDEO`，≤100MB）
+- seed：`RH_DANCE_VIDEO` → `python -m scripts.seed_generation_models`
+- **未做**：consent 落库、人脸检测、模板 DB 管理、会员价展示 UI 细节
+
+---
+
+## 2026-07-22 图生图（RunningHub I2I）
+
+### 已落地
+
+- 任务类型：`FAST_IMAGE_TO_IMAGE` / `PRO_IMAGE_TO_IMAGE`
+- Free：与 `FAST_IMAGE` **共用**日额度（`UsageFeature.FAST_IMAGE`）；失败退额度
+- Pro：登录 + **12 credits**（同 `PRO_IMAGE`）
+- 输入：复用 `input_asset_id`（upload-intents → complete → create）；本期仅 1 张
+- RH：`fieldValue` 传 S3 **presigned 公网 URL**（已实测 free/pro app 可接）
+- Free app `2003708796583198721`：node42 图 + node18/43 `fieldValue=null` + node41 比例 select（0=auto…10=21:9）+ node19 prompt
+- Pro app `2061699451919618049`：node2 图 + node3/4/5 `fieldValue=null` + resolution 默认 2k + aspectRatio（含 empty）+ prompt
+- `GET /api/v1/generations/options?job_type=`：前端读取各类型 `aspect_ratios` / `resolutions` 与默认值
+- Quote 已支持两个新类型
+- 因资产上传需登录，图生图（含 free）**要求登录**（游客免费额度仅限文生图）
+
+### generation_models 对齐（RH options 表驱动）
+
+- seed 四行 RH：`RH_FAST_IMAGE` / `RH_PRO_IMAGE` / `RH_FAST_I2I` / `RH_PRO_I2I`（`provider_model_ref`=app id）
+- create / quote / `GET /options` **优先读表**；无 seed 时 fallback `commerce` 常量
+- 任务写入 `model_id` / `model_code`；`provider_app_id` 来自模型
+- pricing_config：`type=quota|fixed` + `credits` + `uses_fast_daily_quota` + `requires_login`
+- 重新 seed：`python -m scripts.seed_generation_models`
+
+---
+
 ## 2026-07-22 实现进度（AI Video / Pollo）
 
 ### 已落地
 
-- **`generation_models` 表** + seed `POLLO_V2_VIDEO`（用户不选模型；服务端默认路由）
+- **`generation_models` 表** + seed `POLLO_V2_VIDEO` + RH 四行（用户不选模型；服务端默认路由）
 - 任务类型：`TEXT_VIDEO` / `IMAGE_VIDEO`（登录 + 积分；无游客免费）
 - 积分公式 BASE=15：`15 × duration_mult × resolution_mult × audio_mult`（audio 关=1 / 开=4；6 档全开；会员不打折）
 - `generate_audio` 已开放：create / quote / task 响应；seed `supports_audio=True`，默认仍 `false`
@@ -45,7 +86,7 @@
 
 ### 相关 API
 
-- `POST /api/v1/generations`（`job_type`: TEXT_VIDEO | IMAGE_VIDEO | FAST_IMAGE | PRO_IMAGE；视频可传 `generate_audio`）
+- `POST /api/v1/generations`（`job_type`: TEXT_VIDEO | IMAGE_VIDEO | FAST_IMAGE | PRO_IMAGE | FAST_IMAGE_TO_IMAGE | PRO_IMAGE_TO_IMAGE；视频可传 `generate_audio`；图生图必传 `input_asset_id`）
 - `POST /api/v1/generations/quote`（同上）
 - `GET /api/v1/generations/{id}` · `POST .../{id}/poll`（响应含 `generate_audio`）
 - `POST /api/v1/assets/upload-intents` · `POST /api/v1/assets/{id}/complete`
@@ -59,8 +100,8 @@
 
 1. Google OAuth + Session  
 2. S3 转存成功后的视频结果端到端验证（需 worker 长轮询或公网 webhook）  
-3. Dance 视频（模板/人脸）— **未做**  
-4. Fast/Pro 迁入 `generation_models`  
+3. ~~Dance 视频（模板/人脸）~~（RH 接入已做；consent/人脸审核仍占位）  
+4. ~~Fast/Pro 迁入 `generation_models`~~（已做）  
 5. 内容审核、watchdog、Admin  
 
 ---

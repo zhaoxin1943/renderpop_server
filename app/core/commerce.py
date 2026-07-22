@@ -74,13 +74,159 @@ ALL_PRODUCT_CODES: Final[tuple[ProductCode, ...]] = (
 )
 
 # --- RunningHub ---
+# Live option catalogs / pricing for RH also live on generation_models (seed).
+# Constants below are defaults for seed + unseeded fallback.
 
 RH_FAST_APP_ID: Final = "2016540100959674370"
 RH_PRO_APP_ID: Final = "2070881747880992769"
+RH_FAST_I2I_APP_ID: Final = "2003708796583198721"
+RH_PRO_I2I_APP_ID: Final = "2061699451919618049"
+# Photo-to-dance video AI App (docs/dance.md)
+RH_DANCE_APP_ID: Final = "1975951975441412098"
+
+RH_FAST_IMAGE_MODEL_CODE: Final = "RH_FAST_IMAGE"
+RH_PRO_IMAGE_MODEL_CODE: Final = "RH_PRO_IMAGE"
+RH_FAST_I2I_MODEL_CODE: Final = "RH_FAST_I2I"
+RH_PRO_I2I_MODEL_CODE: Final = "RH_PRO_I2I"
+RH_DANCE_MODEL_CODE: Final = "RH_DANCE_VIDEO"
+
+IMAGE_FAST_PRICING_VERSION: Final = "image-fast"
+IMAGE_PRO_PRICING_VERSION: Final = "image-pro"
+IMAGE_FAST_I2I_PRICING_VERSION: Final = "image-fast-i2i"
+IMAGE_PRO_I2I_PRICING_VERSION: Final = "image-pro-i2i"
+DANCE_PRICING_VERSION: Final = "dance-v1"
+
+# PRD §3.1 / §8.3: free 120, active member 100
+DANCE_CREDITS_FREE: Final = 120
+DANCE_CREDITS_MEMBER: Final = 100
+DANCE_DEFAULT_ASPECT_RATIO: Final = "9:16"
+DANCE_ASPECT_RATIOS: Final[tuple[str, ...]] = (
+    "9:16",
+    "16:9",
+    "1:1",
+    "3:4",
+    "4:3",
+)
+DANCE_ALLOWED_ASPECT_RATIOS: Final[frozenset[str]] = frozenset(DANCE_ASPECT_RATIOS)
+
+
+@dataclass(frozen=True, slots=True)
+class DanceTemplate:
+    """Preset dance reference video (node 275)."""
+
+    id: str
+    title: str
+    duration_seconds: int
+    video_url: str
+    poster_url: str | None = None
+    aspect_ratio: str = DANCE_DEFAULT_ASPECT_RATIO
+    sort_order: int = 0
+
+
+# Public template videos (migrated from IGRecent dance MVP).
+# Replace URLs when RenderPop hosts its own licensed set.
+DANCE_TEMPLATES: Final[tuple[DanceTemplate, ...]] = (
+    DanceTemplate(
+        id="neon-drift",
+        title="Neon Drift",
+        duration_seconds=15,
+        video_url="https://s3.us-east-2.amazonaws.com/igrecent.com/dance/templates/neon-drift.mp4",
+        aspect_ratio="9:16",
+        sort_order=10,
+    ),
+    DanceTemplate(
+        id="neon-flow",
+        title="Neon Flow",
+        duration_seconds=14,
+        video_url="https://s3.us-east-2.amazonaws.com/igrecent.com/dance/templates/neon-flow.mp4",
+        aspect_ratio="9:16",
+        sort_order=20,
+    ),
+    DanceTemplate(
+        id="urban-pulse",
+        title="Urban Pulse",
+        duration_seconds=13,
+        video_url="https://s3.us-east-2.amazonaws.com/igrecent.com/dance/templates/urban-pulse.mp4",
+        aspect_ratio="9:16",
+        sort_order=30,
+    ),
+    DanceTemplate(
+        id="groove-shift",
+        title="Groove Shift",
+        duration_seconds=15,
+        video_url="https://s3.us-east-2.amazonaws.com/igrecent.com/dance/templates/groove-shift.mp4",
+        aspect_ratio="9:16",
+        sort_order=40,
+    ),
+)
+
+DANCE_TEMPLATES_BY_ID: Final[dict[str, DanceTemplate]] = {
+    t.id: t for t in DANCE_TEMPLATES
+}
 
 PRO_DEFAULT_QUALITY: Final = "medium"
 PRO_DEFAULT_RESOLUTION: Final = "2k"
+# Pro image-to-image (RH app 2061699451919618049) node 1
+# fieldData resolution: 1k | 2k | 4k (default 2k)
+# fieldData aspectRatio: empty, 1:1, 16:9, … (default empty)
+# Optional image nodes 3/4/5: send fieldValue=null when unused.
+PRO_I2I_RESOLUTIONS: Final[tuple[str, ...]] = ("1k", "2k", "4k")
+PRO_I2I_DEFAULT_RESOLUTION: Final = "2k"
+PRO_I2I_ALLOWED_RESOLUTIONS: Final[frozenset[str]] = frozenset(PRO_I2I_RESOLUTIONS)
+PRO_I2I_ASPECT_RATIOS: Final[tuple[str, ...]] = (
+    "empty",
+    "1:1",
+    "16:9",
+    "9:16",
+    "4:3",
+    "3:4",
+    "3:2",
+    "2:3",
+    "5:4",
+    "4:5",
+    "21:9",
+    "1:4",
+    "4:1",
+    "1:8",
+    "8:1",
+)
+PRO_I2I_DEFAULT_ASPECT_RATIO: Final = "empty"
+PRO_I2I_ALLOWED_ASPECT_RATIOS: Final[frozenset[str]] = frozenset(PRO_I2I_ASPECT_RATIOS)
 FAST_DEFAULT_SCALE_BY: Final = "1.5"
+# Free I2I app (2003708796583198721) node 41 "select" — ratio index from RH UI:
+# 0 自动匹配图像1比例 | 1 1:1 | 2 2:3 | 3 3:2 | 4 3:4 | 5 4:3
+# 6 4:5 | 7 5:4 | 8 9:16 | 9 16:9 | 10 21:9
+# Nodes 18/43 are optional extra images — send fieldValue=null when unused.
+FAST_I2I_ASPECT_RATIOS: Final[tuple[str, ...]] = (
+    "auto",
+    "1:1",
+    "2:3",
+    "3:2",
+    "3:4",
+    "4:3",
+    "4:5",
+    "5:4",
+    "9:16",
+    "16:9",
+    "21:9",
+)
+RH_FAST_I2I_RATIO_SELECT: Final[dict[str, str]] = {
+    "auto": "0",
+    "1:1": "1",
+    "2:3": "2",
+    "3:2": "3",
+    "3:4": "4",
+    "4:3": "5",
+    "4:5": "6",
+    "5:4": "7",
+    "9:16": "8",
+    "16:9": "9",
+    "21:9": "10",
+}
+FAST_I2I_DEFAULT_ASPECT_RATIO: Final = "auto"
+FAST_I2I_ALLOWED_ASPECT_RATIOS: Final[frozenset[str]] = frozenset(
+    RH_FAST_I2I_RATIO_SELECT.keys()
+)
 
 # aspect_ratio -> (width, height) for Fast workflow
 # Default product ratio is 9:16 (mobile-first).
@@ -95,6 +241,87 @@ FAST_ASPECT_SIZES: Final[dict[str, tuple[int, int]]] = {
 DEFAULT_ASPECT_RATIO: Final = "9:16"
 
 ALLOWED_ASPECT_RATIOS: Final[frozenset[str]] = frozenset(FAST_ASPECT_SIZES.keys())
+FAST_ASPECT_RATIOS: Final[tuple[str, ...]] = tuple(FAST_ASPECT_SIZES.keys())
+
+
+def default_rh_quota_pricing_config(
+    *,
+    requires_login: bool,
+    pricing_version: str,
+) -> dict:
+    """Free daily Fast path (text or I2I)."""
+    return {
+        "type": "quota",
+        "credits": 0,
+        "uses_fast_daily_quota": True,
+        "requires_login": requires_login,
+        "pricing_version": pricing_version,
+    }
+
+
+def default_rh_fixed_pricing_config(
+    *,
+    credits: int = PRO_IMAGE_CREDITS,
+    requires_login: bool = True,
+    pricing_version: str = IMAGE_PRO_PRICING_VERSION,
+    credits_member: int | None = None,
+) -> dict:
+    """Pro image / Pro I2I / Dance fixed credit charge."""
+    cfg: dict = {
+        "type": "fixed",
+        "credits": credits,
+        "uses_fast_daily_quota": False,
+        "requires_login": requires_login,
+        "pricing_version": pricing_version,
+    }
+    if credits_member is not None:
+        cfg["credits_member"] = credits_member
+    return cfg
+
+
+def default_dance_pricing_config() -> dict:
+    return default_rh_fixed_pricing_config(
+        credits=DANCE_CREDITS_FREE,
+        credits_member=DANCE_CREDITS_MEMBER,
+        requires_login=True,
+        pricing_version=DANCE_PRICING_VERSION,
+    )
+
+
+def dance_credits_from_pricing_config(
+    pricing_config: dict | None,
+    *,
+    is_member: bool,
+) -> int:
+    """Resolve Dance credits: free-tier vs active membership."""
+    cfg = pricing_config or {}
+    free = int(cfg.get("credits", DANCE_CREDITS_FREE))
+    member = int(cfg.get("credits_member", DANCE_CREDITS_MEMBER))
+    return member if is_member else free
+
+
+def image_credits_from_pricing_config(pricing_config: dict | None) -> int:
+    """Credits for FIXED/quota image models (0 for free daily)."""
+    return int((pricing_config or {}).get("credits", 0))
+
+
+def get_dance_template(template_id: str) -> DanceTemplate | None:
+    return DANCE_TEMPLATES_BY_ID.get(template_id)
+
+
+def pricing_uses_fast_daily_quota(pricing_config: dict | None) -> bool:
+    cfg = pricing_config or {}
+    if "uses_fast_daily_quota" in cfg:
+        return bool(cfg["uses_fast_daily_quota"])
+    return cfg.get("type") == "quota"
+
+
+def pricing_requires_login(pricing_config: dict | None, *, default: bool) -> bool:
+    cfg = pricing_config or {}
+    if "requires_login" in cfg:
+        return bool(cfg["requires_login"])
+    return default
+
 
 # --- AI Video (Pollo) defaults; live pricing lives on generation_models ---
 

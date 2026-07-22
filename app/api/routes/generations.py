@@ -1,9 +1,11 @@
-from fastapi import APIRouter, BackgroundTasks, Header, Response, status
+from fastapi import APIRouter, BackgroundTasks, Header, Query, Response, status
 
 from app.core.deps import GenerationServiceDep, OptionalUserIdDep, SettingsDep
 from app.core.errors import AppError
+from app.models.enums import TaskType
 from app.schemas.generation import (
     CreateGenerationBody,
+    GenerationOptionsResponse,
     GenerationQuoteBody,
     GenerationQuoteResponse,
     GenerationTaskResponse,
@@ -11,6 +13,18 @@ from app.schemas.generation import (
 from app.workers.tasks import run_generation_job
 
 router = APIRouter(prefix="/v1/generations", tags=["generations"])
+
+
+@router.get("/options", response_model=GenerationOptionsResponse)
+async def list_generation_options(
+    service: GenerationServiceDep,
+    job_type: TaskType | None = Query(
+        default=None,
+        description="Optional filter, e.g. PRO_IMAGE_TO_IMAGE",
+    ),
+) -> GenerationOptionsResponse:
+    """Frontend catalogs: supported aspect_ratios / resolutions per job_type."""
+    return await service.list_job_options(job_type=job_type)
 
 
 @router.post("/quote", response_model=GenerationQuoteResponse)
@@ -59,6 +73,8 @@ async def create_generation(
             resolution=body.resolution,
             generate_audio=body.generate_audio,
             input_asset_id=body.input_asset_id,
+            template_id=body.template_id,
+            reference_video_asset_id=body.reference_video_asset_id,
         )
     except AppError:
         raise

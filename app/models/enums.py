@@ -188,9 +188,11 @@ class CreditReservationStatus(StrEnum):
 class TaskType(StrEnum):
     FAST_IMAGE = "FAST_IMAGE"
     PRO_IMAGE = "PRO_IMAGE"
+    FAST_IMAGE_TO_IMAGE = "FAST_IMAGE_TO_IMAGE"
+    PRO_IMAGE_TO_IMAGE = "PRO_IMAGE_TO_IMAGE"
     TEXT_VIDEO = "TEXT_VIDEO"
     IMAGE_VIDEO = "IMAGE_VIDEO"
-    DANCE_VIDEO = "DANCE_VIDEO"  # reserved (templates / face)
+    DANCE_VIDEO = "DANCE_VIDEO"
 
 
 class TaskStatus(StrEnum):
@@ -289,6 +291,7 @@ class AttemptStatus(StrEnum):
 
 class AssetType(StrEnum):
     INPUT_IMAGE = "INPUT_IMAGE"
+    INPUT_VIDEO = "INPUT_VIDEO"
     OUTPUT_IMAGE = "OUTPUT_IMAGE"
     OUTPUT_VIDEO = "OUTPUT_VIDEO"
     THUMBNAIL = "THUMBNAIL"
