@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     runninghub_api_key: str = ""
     runninghub_base_url: str = "https://www.runninghub.ai"
 
+    # Pollo AI video (text/image → video)
+    pollo_api_key: str = ""
+    pollo_base_url: str = "https://pollo.ai/api/platform"
+    # Base64 secret from https://api.pollo.ai/webhook (optional; poll works without it)
+    pollo_webhook_secret: str = ""
+
     aws_region: str = "us-east-2"
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""

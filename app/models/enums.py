@@ -188,7 +188,9 @@ class CreditReservationStatus(StrEnum):
 class TaskType(StrEnum):
     FAST_IMAGE = "FAST_IMAGE"
     PRO_IMAGE = "PRO_IMAGE"
-    DANCE_VIDEO = "DANCE_VIDEO"  # reserved
+    TEXT_VIDEO = "TEXT_VIDEO"
+    IMAGE_VIDEO = "IMAGE_VIDEO"
+    DANCE_VIDEO = "DANCE_VIDEO"  # reserved (templates / face)
 
 
 class TaskStatus(StrEnum):
@@ -248,6 +250,33 @@ class TransferStatus(StrEnum):
 
 class GenerationProvider(StrEnum):
     RUNNINGHUB = "runninghub"
+    POLLO = "pollo"
+
+
+class ModelModality(StrEnum):
+    IMAGE = "IMAGE"
+    VIDEO = "VIDEO"
+
+
+class GenerationModelStatus(StrEnum):
+    DRAFT = "DRAFT"
+    ACTIVE = "ACTIVE"
+    DISABLED = "DISABLED"
+
+
+class PricingType(StrEnum):
+    FIXED = "FIXED"
+    FORMULA = "FORMULA"
+    LOOKUP = "LOOKUP"
+
+
+class PolloTaskStatus(StrEnum):
+    """External Pollo generation status strings."""
+
+    WAITING = "waiting"
+    PROCESSING = "processing"
+    SUCCEED = "succeed"
+    FAILED = "failed"
 
 
 class AttemptStatus(StrEnum):

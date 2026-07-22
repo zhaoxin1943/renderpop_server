@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 
 # How long generated result URLs are valid for the client.
 PRESIGNED_GET_EXPIRES = 3600
+# How long client may PUT an upload (I2V input image).
+PRESIGNED_PUT_EXPIRES = 900
+# How long Pollo may GET a private input image after submit.
+PROVIDER_GET_EXPIRES = 6 * 3600
 
 
 @dataclass(frozen=True)
@@ -73,6 +77,18 @@ class S3Storage:
         owner = user_id or visitor_id or "anon"
         safe_ext = (ext or "bin").lstrip(".").lower()[:16] or "bin"
         return f"{self._prefix}/outputs/{owner}/{task_id}/{uuid4().hex}.{safe_ext}"
+
+    def build_input_key(
+        self,
+        *,
+        asset_id: str,
+        user_id: str | None,
+        visitor_id: str | None = None,
+        ext: str = "jpg",
+    ) -> str:
+        owner = user_id or visitor_id or "anon"
+        safe_ext = (ext or "bin").lstrip(".").lower()[:16] or "bin"
+        return f"{self._prefix}/inputs/{owner}/{asset_id}.{safe_ext}"
 
     def build_showcase_key(self, *, sort_order: int, ext: str) -> str:
         """Public-read homepage waterfall objects live under media/showcase/."""
@@ -209,6 +225,35 @@ class S3Storage:
         return self._get_client().generate_presigned_url(
             "get_object",
             Params={"Bucket": self._bucket, "Key": storage_key},
+            ExpiresIn=expires_in,
+        )
+
+    async def presign_put(
+        self,
+        storage_key: str,
+        *,
+        content_type: str,
+        expires_in: int = PRESIGNED_PUT_EXPIRES,
+    ) -> str:
+        if not self.configured:
+            raise RuntimeError("S3 not configured")
+        return await asyncio.to_thread(
+            self._presign_put_sync,
+            storage_key,
+            content_type,
+            expires_in,
+        )
+
+    def _presign_put_sync(
+        self, storage_key: str, content_type: str, expires_in: int
+    ) -> str:
+        return self._get_client().generate_presigned_url(
+            "put_object",
+            Params={
+                "Bucket": self._bucket,
+                "Key": storage_key,
+                "ContentType": content_type,
+            },
             ExpiresIn=expires_in,
         )
 

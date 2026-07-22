@@ -17,6 +17,7 @@ from app.models.credit import (
     CreditTransaction,
 )
 from app.models.daily_usage import DailyUsageCounter
+from app.models.generation_model import GenerationModel
 from app.models.generation_task import GenerationAttempt, GenerationTask
 from app.models.identity import Identity
 from app.models.order import Order
@@ -39,6 +40,7 @@ __all__ = [
     "CreditTransaction",
     "DailyUsageCounter",
     "GenerationAttempt",
+    "GenerationModel",
     "GenerationTask",
     "IdMixin",
     "Identity",

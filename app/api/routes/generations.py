@@ -2,10 +2,30 @@ from fastapi import APIRouter, BackgroundTasks, Header, Response, status
 
 from app.core.deps import GenerationServiceDep, OptionalUserIdDep, SettingsDep
 from app.core.errors import AppError
-from app.schemas.generation import CreateGenerationBody, GenerationTaskResponse
+from app.schemas.generation import (
+    CreateGenerationBody,
+    GenerationQuoteBody,
+    GenerationQuoteResponse,
+    GenerationTaskResponse,
+)
 from app.workers.tasks import run_generation_job
 
 router = APIRouter(prefix="/v1/generations", tags=["generations"])
+
+
+@router.post("/quote", response_model=GenerationQuoteResponse)
+async def quote_generation(
+    body: GenerationQuoteBody,
+    service: GenerationServiceDep,
+    user_id: OptionalUserIdDep,
+) -> GenerationQuoteResponse:
+    return await service.quote(
+        user_id=user_id,
+        task_type=body.job_type,
+        length=body.length,
+        resolution=body.resolution,
+        generate_audio=body.generate_audio,
+    )
 
 
 @router.post("", response_model=GenerationTaskResponse, status_code=status.HTTP_202_ACCEPTED)
@@ -21,7 +41,11 @@ async def create_generation(
 ) -> GenerationTaskResponse:
     key = idempotency_key or body.client_request_id
     if not key:
-        raise AppError("VALIDATION_ERROR", "Idempotency-Key or client_request_id required", 422)
+        raise AppError(
+            "VALIDATION_ERROR",
+            "Idempotency-Key or client_request_id required",
+            422,
+        )
 
     try:
         task = await service.create_task(
@@ -31,6 +55,10 @@ async def create_generation(
             prompt=body.prompt,
             aspect_ratio=body.aspect_ratio,
             idempotency_key=key,
+            length=body.length,
+            resolution=body.resolution,
+            generate_audio=body.generate_audio,
+            input_asset_id=body.input_asset_id,
         )
     except AppError:
         raise
@@ -52,9 +80,11 @@ async def _run_inline(task_id: str) -> None:
     """Dev fallback without Dramatiq worker process."""
     from app.core.config import get_settings
     from app.core.db import get_session_factory
+    from app.providers.pollo import PolloClient
     from app.providers.runninghub import RunningHubClient
     from app.providers.s3 import S3Storage
     from app.repo.credit_repo import CreditRepo
+    from app.repo.generation_model_repo import GenerationModelRepo
     from app.repo.generation_repo import GenerationRepo
     from app.repo.subscription_repo import SubscriptionRepo
     from app.repo.usage_repo import UsageRepo
@@ -76,7 +106,9 @@ async def _run_inline(task_id: str) -> None:
                 ),
                 settings,
                 rh=RunningHubClient(settings),
+                pollo=PolloClient(settings),
                 s3=S3Storage(settings),
+                model_repo=GenerationModelRepo(session),
             )
             await gen.submit_to_provider(task_id)
             await session.commit()
@@ -101,7 +133,7 @@ async def poll_generation(
     service: GenerationServiceDep,
     user_id: OptionalUserIdDep,
 ) -> GenerationTaskResponse:
-    """Manual poll of RunningHub (also used by worker)."""
+    """Manual poll of provider (also used by worker)."""
     await service.get_task(job_id, user_id=user_id)
     task = await service.poll_provider(job_id)
     return await service.to_public(task)

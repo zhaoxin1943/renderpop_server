@@ -8,6 +8,63 @@
 
 ---
 
+## 2026-07-22 实现进度（AI Video / Pollo）
+
+### 已落地
+
+- **`generation_models` 表** + seed `POLLO_V2_VIDEO`（用户不选模型；服务端默认路由）
+- 任务类型：`TEXT_VIDEO` / `IMAGE_VIDEO`（登录 + 积分；无游客免费）
+- 积分公式 BASE=15：`15 × duration_mult × resolution_mult × audio_mult`（audio 关=1 / 开=4；6 档全开；会员不打折）
+- `generate_audio` 已开放：create / quote / task 响应；seed `supports_audio=True`，默认仍 `false`
+- `PolloClient`：submit / status / webhook 验签；**响应 envelope unwrap**（`{code,data}`）；请求体带 `generateAudio`
+- 创建冻结 → worker submit → webhook/poll → capture/release → S3 转存视频
+- I2V：`POST /api/v1/assets/upload-intents` + `complete` → presign GET 给 Pollo
+- Webhook：`POST /api/v1/webhooks/generation/pollo`（成功后需再 query 拿 URL）
+- Quote：`POST /api/v1/generations/quote`（可带 `generate_audio`）
+- 迁移：`alembic/versions/20260722_0001_generation_models_video.py`（已 upgrade）
+- seed：`python -m scripts.seed_generation_models`
+- 联调：真实 Pollo submit 成功拿到 `taskId`（status=waiting/processing）
+
+### 视频积分表
+
+无声（`generate_audio=false`，默认）：
+
+| | 480p | 720p | 1080p |
+|--|-----:|-----:|------:|
+| 5s | 15 | 30 | 60 |
+| 10s | 30 | 60 | 120 |
+
+有声（`generate_audio=true`，×4）：
+
+| | 480p | 720p | 1080p |
+|--|-----:|-----:|------:|
+| 5s | 60 | 120 | 240 |
+| 10s | 120 | 240 | 480 |
+
+默认：5s / 720p / 9:16 / generate_audio=false
+
+### 相关 API
+
+- `POST /api/v1/generations`（`job_type`: TEXT_VIDEO | IMAGE_VIDEO | FAST_IMAGE | PRO_IMAGE；视频可传 `generate_audio`）
+- `POST /api/v1/generations/quote`（同上）
+- `GET /api/v1/generations/{id}` · `POST .../{id}/poll`（响应含 `generate_audio`）
+- `POST /api/v1/assets/upload-intents` · `POST /api/v1/assets/{id}/complete`
+- `POST /api/v1/webhooks/generation/pollo` · `.../runninghub`
+
+### 配置
+
+`POLLO_API_KEY` · `POLLO_BASE_URL`（默认 platform）· `POLLO_WEBHOOK_SECRET`（可选；dev 可空）
+
+### 仍占位 / 下一步
+
+1. Google OAuth + Session  
+2. S3 转存成功后的视频结果端到端验证（需 worker 长轮询或公网 webhook）  
+3. Dance 视频（模板/人脸）— **未做**  
+4. Fast/Pro 迁入 `generation_models`  
+5. 内容审核、watchdog、Admin  
+
+---
+
 ## 2026-07-21 实现进度（会员 / 积分 / 生图 / 支付骨架）
 
 ### 已落地
@@ -17,7 +74,7 @@
 - 迁移：`alembic/versions/20260721_0001_credits_membership_generation.py`（已 upgrade）
 - 商品 seed：`python -m scripts.seed_products`（5 SKU；sandbox 已填 Dodo product id；live 占位 `REPLACE_ME_*`）
 - Credit：FEFO 冻结/结算/释放；会员积分与积分包**同一钱包合并消费**
-- Generation：Fast（日额度）/ Pro（12 credits）；RH adapter + webhook 路由 + poll；S3 转存 **stub**
+- Generation：Fast（日额度）/ Pro（12 credits）；RH adapter + webhook 路由 + poll；S3 转存
 - Billing：Dodo checkout session（无 key 时 stub URL）+ webhook 验签/幂等发货骨架
 - 登录：**占位** — dev 用 `X-Dev-User-Id` + `POST /api/v1/dev/users` / `grant-credits`
 

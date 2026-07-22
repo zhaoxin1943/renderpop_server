@@ -15,9 +15,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import Settings, get_settings
 from app.core.db import get_db_session
 from app.providers.dodo import DodoClient
+from app.providers.pollo import PolloClient
 from app.providers.runninghub import RunningHubClient
 from app.providers.s3 import S3Storage
+from app.repo.base import BaseRepo
 from app.repo.credit_repo import CreditRepo
+from app.repo.generation_model_repo import GenerationModelRepo
 from app.repo.generation_repo import GenerationRepo
 from app.repo.health_repo import HealthRepo
 from app.repo.order_repo import OrderRepo
@@ -25,6 +28,7 @@ from app.repo.product_repo import ProductRepo
 from app.repo.subscription_repo import SubscriptionRepo
 from app.repo.usage_repo import UsageRepo
 from app.repo.user_repo import UserRepo
+from app.service.asset_service import AssetService
 from app.service.auth_service import SESSION_COOKIE_NAME, AuthService
 from app.service.billing_service import BillingService
 from app.service.credit_service import CreditService
@@ -71,6 +75,10 @@ def get_generation_repo(session: SessionDep) -> GenerationRepo:
     return GenerationRepo(session)
 
 
+def get_generation_model_repo(session: SessionDep) -> GenerationModelRepo:
+    return GenerationModelRepo(session)
+
+
 def get_usage_repo(session: SessionDep) -> UsageRepo:
     return UsageRepo(session)
 
@@ -82,6 +90,7 @@ ProductRepoDep = Annotated[ProductRepo, Depends(get_product_repo)]
 OrderRepoDep = Annotated[OrderRepo, Depends(get_order_repo)]
 SubscriptionRepoDep = Annotated[SubscriptionRepo, Depends(get_subscription_repo)]
 GenerationRepoDep = Annotated[GenerationRepo, Depends(get_generation_repo)]
+GenerationModelRepoDep = Annotated[GenerationModelRepo, Depends(get_generation_model_repo)]
 UsageRepoDep = Annotated[UsageRepo, Depends(get_usage_repo)]
 
 
@@ -110,6 +119,7 @@ def get_s3_storage(settings: SettingsDep) -> S3Storage:
 
 def get_generation_service(
     gen_repo: GenerationRepoDep,
+    model_repo: GenerationModelRepoDep,
     credits: Annotated[CreditService, Depends(get_credit_service)],
     entitlements: Annotated[EntitlementService, Depends(get_entitlement_service)],
     settings: SettingsDep,
@@ -121,8 +131,17 @@ def get_generation_service(
         entitlements,
         settings,
         rh=RunningHubClient(settings),
+        pollo=PolloClient(settings),
         s3=s3,
+        model_repo=model_repo,
     )
+
+
+def get_asset_service(
+    session: SessionDep,
+    s3: Annotated[S3Storage, Depends(get_s3_storage)],
+) -> AssetService:
+    return AssetService(BaseRepo(session), s3)
 
 
 def get_billing_service(
@@ -150,6 +169,7 @@ HealthServiceDep = Annotated[HealthService, Depends(get_health_service)]
 CreditServiceDep = Annotated[CreditService, Depends(get_credit_service)]
 EntitlementServiceDep = Annotated[EntitlementService, Depends(get_entitlement_service)]
 GenerationServiceDep = Annotated[GenerationService, Depends(get_generation_service)]
+AssetServiceDep = Annotated[AssetService, Depends(get_asset_service)]
 BillingServiceDep = Annotated[BillingService, Depends(get_billing_service)]
 AuthServiceDep = Annotated[AuthService, Depends(get_auth_service)]
 

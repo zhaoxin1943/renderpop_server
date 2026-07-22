@@ -16,9 +16,9 @@ from app.models.enums import (
 
 class GenerationTask(TimestampedModel, table=True):
     """
-    Image generation task (Fast / Pro). Dance reserved for later.
+    Generation task (Fast/Pro image, AI video). Dance reserved for later.
 
-    User inputs + RunningHub provider fields + result linkage.
+    User inputs + provider fields + result linkage.
     """
 
     __tablename__ = "generation_tasks"
@@ -52,7 +52,27 @@ class GenerationTask(TimestampedModel, table=True):
     )
     prompt: str = Field(sa_column=Column(Text, nullable=False))
     aspect_ratio: str = Field(sa_column=Column(String(16), nullable=False))
-    # width/height/scale_by or quality/resolution snapshot
+    # Catalog model used for this job (video); null for legacy image rows
+    model_id: str | None = Field(
+        default=None,
+        foreign_key="generation_models.id",
+        max_length=36,
+        nullable=True,
+        index=True,
+    )
+    model_code: str | None = Field(
+        default=None,
+        sa_column=Column(String(64), nullable=True),
+    )
+    # IMAGE_VIDEO input photo
+    input_asset_id: str | None = Field(
+        default=None,
+        foreign_key="assets.id",
+        max_length=36,
+        nullable=True,
+        index=True,
+    )
+    # width/height/scale_by or quality/resolution/length snapshot
     input_params: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     pricing_snapshot: dict | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     credits_reserved: int = Field(

@@ -96,6 +96,100 @@ DEFAULT_ASPECT_RATIO: Final = "9:16"
 
 ALLOWED_ASPECT_RATIOS: Final[frozenset[str]] = frozenset(FAST_ASPECT_SIZES.keys())
 
+# --- AI Video (Pollo) defaults; live pricing lives on generation_models ---
+
+VIDEO_MODEL_CODE: Final = "POLLO_V2_VIDEO"
+VIDEO_PROVIDER_MODEL_REF: Final = "pollo-v2-0"
+VIDEO_DEFAULT_LENGTH: Final = 5
+VIDEO_DEFAULT_RESOLUTION: Final = "720p"
+VIDEO_DEFAULT_ASPECT_RATIO: Final = "9:16"
+VIDEO_SUPPORTED_LENGTHS: Final[tuple[int, ...]] = (5, 10)
+VIDEO_SUPPORTED_RESOLUTIONS: Final[tuple[str, ...]] = ("480p", "720p", "1080p")
+VIDEO_SUPPORTED_ASPECT_RATIOS: Final[tuple[str, ...]] = (
+    "9:16",
+    "16:9",
+    "1:1",
+    "4:3",
+    "3:4",
+)
+VIDEO_PRICING_VERSION: Final = "video-v1"
+# formula: credits = base × duration_mult × resolution_mult × audio_mult
+VIDEO_CREDIT_BASE: Final = 15
+VIDEO_DURATION_MULT: Final[dict[int, int]] = {5: 1, 10: 2}
+VIDEO_RESOLUTION_MULT: Final[dict[str, int]] = {
+    "480p": 1,
+    "720p": 2,
+    "1080p": 4,
+}
+VIDEO_AUDIO_MULT: Final[dict[bool, int]] = {False: 1, True: 4}
+
+
+def video_credits(
+    *, length: int, resolution: str, generate_audio: bool = False
+) -> int:
+    """Compute video credits from the BASE=15 formula (optional audio ×4)."""
+    d = VIDEO_DURATION_MULT.get(length)
+    r = VIDEO_RESOLUTION_MULT.get(resolution)
+    if d is None:
+        raise ValueError(f"unsupported video length: {length}")
+    if r is None:
+        raise ValueError(f"unsupported video resolution: {resolution}")
+    a = VIDEO_AUDIO_MULT[bool(generate_audio)]
+    return VIDEO_CREDIT_BASE * d * r * a
+
+
+def video_credits_from_pricing_config(
+    pricing_config: dict,
+    *,
+    length: int,
+    resolution: str,
+    generate_audio: bool = False,
+) -> int:
+    """
+    Evaluate generation_models.pricing_config.
+
+    FORMULA shape:
+      base_credits, duration_mult, resolution_mult, optional audio_mult
+    LOOKUP shape:
+      table: {"5|720p|false": 30, ...}
+    """
+    ptype = (pricing_config or {}).get("type") or "formula"
+    if ptype == "lookup":
+        key = f"{length}|{resolution}|{str(generate_audio).lower()}"
+        table = pricing_config.get("table") or {}
+        if key not in table:
+            raise ValueError(f"no lookup price for {key}")
+        return int(table[key])
+
+    # formula (default)
+    base = int(pricing_config.get("base_credits", VIDEO_CREDIT_BASE))
+    dmap = pricing_config.get("duration_mult") or VIDEO_DURATION_MULT
+    rmap = pricing_config.get("resolution_mult") or VIDEO_RESOLUTION_MULT
+    amap = pricing_config.get("audio_mult") or {
+        "false": VIDEO_AUDIO_MULT[False],
+        "true": VIDEO_AUDIO_MULT[True],
+    }
+    d = dmap.get(str(length), dmap.get(length))
+    r = rmap.get(resolution)
+    a = amap.get(str(generate_audio).lower(), VIDEO_AUDIO_MULT[bool(generate_audio)])
+    if d is None or r is None:
+        raise ValueError("unsupported length or resolution for formula pricing")
+    return int(base) * int(d) * int(r) * int(a)
+
+
+def default_video_pricing_config() -> dict:
+    return {
+        "type": "formula",
+        "base_credits": VIDEO_CREDIT_BASE,
+        "duration_mult": {str(k): v for k, v in VIDEO_DURATION_MULT.items()},
+        "resolution_mult": dict(VIDEO_RESOLUTION_MULT),
+        "audio_mult": {
+            "false": VIDEO_AUDIO_MULT[False],
+            "true": VIDEO_AUDIO_MULT[True],
+        },
+        "member_discount": None,
+    }
+
 
 @dataclass(frozen=True, slots=True)
 class ProductSeed:
