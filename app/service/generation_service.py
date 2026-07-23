@@ -936,6 +936,7 @@ class GenerationService:
             items.append(
                 GeneratedAssetResponse(
                     job_id=task.id,
+                    session_id=task.creation_session_id,
                     task_type=task.task_type,
                     model_code=task.model_code,
                     prompt=task.prompt,
@@ -945,10 +946,34 @@ class GenerationService:
                     completed_at=task.completed_at,
                 )
             )
+
         return GeneratedAssetsResponse(
             items=items,
             next_offset=offset + limit if len(tasks) == limit else None,
         )
+
+    async def delete_generated_asset(self, *, user_id: str, job_id: str) -> None:
+        """Delete an asset item owned by the specified user."""
+        task = await self._repo.get(job_id)
+        if not task or task.user_id != user_id:
+            raise NotFound("Asset not found")
+        task.status = TaskStatus.CANCELED
+        if task.result_asset_id:
+            asset = await self._repo.session.get(Asset, task.result_asset_id)
+            if asset:
+                asset.deleted_at = utc_now()
+        await self._repo.session.flush()
+
+
+
+    async def get_generated_asset_download_url(self, *, user_id: str, job_id: str) -> str:
+        """Get the result URL for downloading an asset."""
+        task = await self.get_task(job_id, user_id=user_id)
+        result_urls = await self._result_urls_for_client(task)
+        if not result_urls:
+            raise NotFound("Asset result not found")
+        return result_urls[0]
+
 
     def _job_options_from_catalog(
         self, task_type: TaskType, cat: dict[str, Any]

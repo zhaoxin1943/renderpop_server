@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.creation_session import CreationSession
+from app.models.enums import TaskStatus
 from app.models.generation_task import GenerationTask
 from app.repo.base import BaseRepo
 
@@ -69,8 +70,12 @@ class CreationSessionRepo(BaseRepo):
     async def list_tasks(self, session_id: str) -> list[GenerationTask]:
         stmt = (
             select(GenerationTask)
-            .where(GenerationTask.creation_session_id == session_id)
+            .where(
+                GenerationTask.creation_session_id == session_id,
+                GenerationTask.status != TaskStatus.CANCELED,
+            )
             .order_by(GenerationTask.created_at.asc())
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+

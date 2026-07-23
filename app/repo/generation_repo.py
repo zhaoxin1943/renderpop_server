@@ -79,3 +79,8 @@ class GenerationRepo(BaseRepo):
         stmt = stmt.order_by(GenerationTask.created_at.desc()).limit(limit).offset(offset)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
+
+    async def delete(self, task: GenerationTask) -> None:
+        await self.session.delete(task)
+        await self.session.flush()
+

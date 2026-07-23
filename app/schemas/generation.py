@@ -33,6 +33,7 @@ class GeneratedAssetResponse(BaseModel):
     """A successful user-owned generation ready for the asset library."""
 
     job_id: str
+    session_id: str | None = None
     task_type: TaskType
     model_code: str | None = None
     prompt: str
@@ -40,6 +41,7 @@ class GeneratedAssetResponse(BaseModel):
     result_url: str
     created_at: datetime
     completed_at: datetime | None = None
+
 
 
 class GeneratedAssetsResponse(BaseModel):

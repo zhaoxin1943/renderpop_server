@@ -1,6 +1,8 @@
 from typing import Literal
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Header, Query, Response, status
+
 
 from app.core.deps import (
     CreationSessionServiceDep,
@@ -65,6 +67,41 @@ async def list_generated_assets(
         limit=limit,
         offset=offset,
     )
+
+
+@router.delete("/assets/{job_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_generated_asset(
+    job_id: str,
+    service: GenerationServiceDep,
+    user_id: UserIdDep,
+) -> None:
+    await service.delete_generated_asset(user_id=user_id, job_id=job_id)
+
+
+@router.get("/assets/{job_id}/download")
+async def download_generated_asset(
+    job_id: str,
+    service: GenerationServiceDep,
+    user_id: UserIdDep,
+) -> Response:
+    url = await service.get_generated_asset_download_url(user_id=user_id, job_id=job_id)
+    async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
+        res = await client.get(url)
+        if res.status_code != 200:
+            raise AppError("DOWNLOAD_FAILED", "Failed to download asset file", 500)
+
+        content_type = res.headers.get("content-type", "application/octet-stream")
+        ext = "mp4" if "video" in content_type else "png"
+        filename = f"renderpop-{job_id[:8]}.{ext}"
+
+        return Response(
+            content=res.content,
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"',
+            },
+        )
+
 
 
 @router.post("", response_model=GenerationTaskResponse, status_code=status.HTTP_202_ACCEPTED)
