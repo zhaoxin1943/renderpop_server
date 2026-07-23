@@ -1784,6 +1784,7 @@ class GenerationService:
             resolution=params.get("resolution"),
             generate_audio=generate_audio,
             template_id=str(template_id) if template_id else None,
+            input_asset_id=task.input_asset_id,
             result_transfer_status=task.result_transfer_status,
             result_urls=result_urls,
             input_url=input_url,

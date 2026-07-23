@@ -21,6 +21,7 @@ class GenerationTaskResponse(BaseModel):
     resolution: str | None = None
     generate_audio: bool | None = None
     template_id: str | None = None
+    input_asset_id: str | None = None
     result_transfer_status: TransferStatus | None = None
     result_urls: list[str] | None = None
     input_url: str | None = None
