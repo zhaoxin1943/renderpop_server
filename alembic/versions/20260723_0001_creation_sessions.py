@@ -69,8 +69,8 @@ def upgrade() -> None:
         ["id"],
     )
 
-    # Sessions did not exist before this migration. Preserve old history by
-    # grouping each owner's pre-session tasks into one chronological session.
+    # Sessions did not exist before this migration. Preserve the original
+    # semantics: each historical top-level task becomes its own session.
     bind = op.get_bind()
     tasks = sa.table(
         "generation_tasks",
@@ -90,40 +90,35 @@ def upgrade() -> None:
         sa.column("visitor_id", sa.String),
     )
 
-    for owner_column in (tasks.c.user_id, tasks.c.visitor_id):
-        owner_ids = bind.execute(
-            sa.select(owner_column)
-            .where(owner_column.is_not(None), tasks.c.creation_session_id.is_(None))
-            .distinct()
-        ).scalars()
-        for owner_id in owner_ids:
-            timestamps = bind.execute(
-                sa.select(
-                    sa.func.min(tasks.c.created_at),
-                    sa.func.max(tasks.c.updated_at),
-                ).where(
-                    owner_column == owner_id,
-                    tasks.c.creation_session_id.is_(None),
-                )
-            ).one()
-            session_id = str(uuid4())
-            bind.execute(
-                sa.insert(sessions).values(
-                    id=session_id,
-                    created_at=timestamps[0],
-                    updated_at=timestamps[1],
-                    user_id=owner_id if owner_column.name == "user_id" else None,
-                    visitor_id=owner_id if owner_column.name == "visitor_id" else None,
-                )
+    legacy_tasks = bind.execute(
+        sa.select(
+            tasks.c.id,
+            tasks.c.user_id,
+            tasks.c.visitor_id,
+            tasks.c.created_at,
+            tasks.c.updated_at,
+        ).where(tasks.c.creation_session_id.is_(None))
+    ).mappings()
+    for task in legacy_tasks:
+        user_id = task["user_id"]
+        visitor_id = None if user_id else task["visitor_id"]
+        if user_id is None and visitor_id is None:
+            continue
+        session_id = str(uuid4())
+        bind.execute(
+            sa.insert(sessions).values(
+                id=session_id,
+                created_at=task["created_at"],
+                updated_at=task["updated_at"],
+                user_id=user_id,
+                visitor_id=visitor_id,
             )
-            bind.execute(
-                sa.update(tasks)
-                .where(
-                    owner_column == owner_id,
-                    tasks.c.creation_session_id.is_(None),
-                )
-                .values(creation_session_id=session_id)
-            )
+        )
+        bind.execute(
+            sa.update(tasks)
+            .where(tasks.c.id == task["id"])
+            .values(creation_session_id=session_id)
+        )
 
 
 def downgrade() -> None:

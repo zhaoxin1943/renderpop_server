@@ -211,7 +211,7 @@ FAST_I2I_ASPECT_RATIOS: Final[tuple[str, ...]] = (
     "21:9",
 )
 RH_FAST_I2I_RATIO_SELECT: Final[dict[str, str]] = {
-    "auto": "0",
+    "auto": "1",
     "1:1": "1",
     "2:3": "2",
     "3:2": "3",

@@ -98,3 +98,7 @@ docs/
 
 `get_db_session`：一请求一 session，成功 commit / 异常 rollback。  
 Worker 使用 actor 内短生命周期 session。
+
+
+dramatiq app.workers.tasks
+alembic upgrade head

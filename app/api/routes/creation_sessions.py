@@ -3,6 +3,7 @@ from fastapi import APIRouter, Header, status
 from app.core.deps import CreationSessionServiceDep, GenerationServiceDep, OptionalUserIdDep
 from app.models.creation_session import CreationSession
 from app.schemas.creation_session import (
+    CreationSessionListResponse,
     CreationSessionResponse,
     LatestCreationSessionResponse,
 )
@@ -55,6 +56,22 @@ async def get_latest_creation_session(
             sessions=sessions,
             generations=generations,
         )
+    )
+
+
+@router.get("", response_model=CreationSessionListResponse)
+async def list_creation_sessions(
+    sessions: CreationSessionServiceDep,
+    generations: GenerationServiceDep,
+    user_id: OptionalUserIdDep,
+    x_visitor_id: str | None = Header(default=None, alias="X-Visitor-Id"),
+) -> CreationSessionListResponse:
+    owned_sessions = await sessions.list_owned(user_id=user_id, visitor_id=x_visitor_id)
+    return CreationSessionListResponse(
+        sessions=[
+            await _to_public(session, sessions=sessions, generations=generations)
+            for session in owned_sessions
+        ]
     )
 
 

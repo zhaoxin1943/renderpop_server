@@ -81,5 +81,18 @@ class CreationSessionService:
             raise NotFound("Creation session not found")
         return creation_session
 
+    async def list_owned(
+        self, *, user_id: str | None, visitor_id: str | None
+    ) -> list[CreationSession]:
+        owner_user_id, owner_visitor_id = await self._resolve_owner(
+            user_id=user_id,
+            visitor_id=visitor_id,
+            create_visitor=False,
+        )
+        return await self._repo.list_owned(
+            user_id=owner_user_id,
+            visitor_id=owner_visitor_id,
+        )
+
     async def list_tasks(self, session_id: str) -> list[GenerationTask]:
         return await self._repo.list_tasks(session_id)

@@ -64,6 +64,7 @@ class GenerationRepo(BaseRepo):
         user_id: str,
         *,
         task_type: TaskType | str | None = None,
+        task_types: list[TaskType] | None = None,
         status: TaskStatus | str | None = None,
         limit: int = 20,
         offset: int = 0,
@@ -71,6 +72,8 @@ class GenerationRepo(BaseRepo):
         stmt = select(GenerationTask).where(GenerationTask.user_id == user_id)
         if task_type:
             stmt = stmt.where(GenerationTask.task_type == task_type)
+        if task_types:
+            stmt = stmt.where(GenerationTask.task_type.in_(task_types))
         if status:
             stmt = stmt.where(GenerationTask.status == status)
         stmt = stmt.order_by(GenerationTask.created_at.desc()).limit(limit).offset(offset)

@@ -41,6 +41,13 @@ class GenerationTask(TimestampedModel, table=True):
         max_length=36,
         nullable=True,
     )
+    creation_session_id: str | None = Field(
+        default=None,
+        foreign_key="creation_sessions.id",
+        index=True,
+        max_length=36,
+        nullable=True,
+    )
     task_type: TaskType = Field(sa_column=Column(sa_str_enum(TaskType), nullable=False, index=True))
     status: TaskStatus = Field(
         default=TaskStatus.CREATED,

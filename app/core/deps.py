@@ -19,6 +19,7 @@ from app.providers.pollo import PolloClient
 from app.providers.runninghub import RunningHubClient
 from app.providers.s3 import S3Storage
 from app.repo.base import BaseRepo
+from app.repo.creation_session_repo import CreationSessionRepo
 from app.repo.credit_repo import CreditRepo
 from app.repo.generation_model_repo import GenerationModelRepo
 from app.repo.generation_repo import GenerationRepo
@@ -32,6 +33,7 @@ from app.repo.user_repo import UserRepo
 from app.service.asset_service import AssetService
 from app.service.auth_service import SESSION_COOKIE_NAME, AuthService
 from app.service.billing_service import BillingService
+from app.service.creation_session_service import CreationSessionService
 from app.service.credit_service import CreditService
 from app.service.dev_service import DevService
 from app.service.entitlement_service import EntitlementService
@@ -60,6 +62,10 @@ def get_user_repo(session: SessionDep) -> UserRepo:
 
 def get_credit_repo(session: SessionDep) -> CreditRepo:
     return CreditRepo(session)
+
+
+def get_creation_session_repo(session: SessionDep) -> CreationSessionRepo:
+    return CreationSessionRepo(session)
 
 
 def get_product_repo(session: SessionDep) -> ProductRepo:
@@ -93,6 +99,7 @@ def get_showcase_repo(session: SessionDep) -> ShowcaseRepo:
 HealthRepoDep = Annotated[HealthRepo, Depends(get_health_repo)]
 UserRepoDep = Annotated[UserRepo, Depends(get_user_repo)]
 CreditRepoDep = Annotated[CreditRepo, Depends(get_credit_repo)]
+CreationSessionRepoDep = Annotated[CreationSessionRepo, Depends(get_creation_session_repo)]
 ProductRepoDep = Annotated[ProductRepo, Depends(get_product_repo)]
 OrderRepoDep = Annotated[OrderRepo, Depends(get_order_repo)]
 SubscriptionRepoDep = Annotated[SubscriptionRepo, Depends(get_subscription_repo)]
@@ -111,6 +118,12 @@ def get_health_service(repo: HealthRepoDep) -> HealthService:
 
 def get_credit_service(repo: CreditRepoDep) -> CreditService:
     return CreditService(repo)
+
+
+def get_creation_session_service(
+    repo: CreationSessionRepoDep,
+) -> CreationSessionService:
+    return CreationSessionService(repo)
 
 
 def get_entitlement_service(
@@ -187,6 +200,9 @@ def get_dev_service(
 
 HealthServiceDep = Annotated[HealthService, Depends(get_health_service)]
 CreditServiceDep = Annotated[CreditService, Depends(get_credit_service)]
+CreationSessionServiceDep = Annotated[
+    CreationSessionService, Depends(get_creation_session_service)
+]
 EntitlementServiceDep = Annotated[EntitlementService, Depends(get_entitlement_service)]
 GenerationServiceDep = Annotated[GenerationService, Depends(get_generation_service)]
 AssetServiceDep = Annotated[AssetService, Depends(get_asset_service)]

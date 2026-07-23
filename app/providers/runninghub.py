@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any
 
@@ -80,11 +81,7 @@ class RunningHubClient:
         image_url: str,
         aspect_ratio: str,
     ) -> list[dict[str, Any]]:
-        """Free image-to-image: single required input (node 42).
-
-        Optional image nodes 18 / 43 must still be present with fieldValue=null
-        when unused (omitting them fails RH validation).
-        """
+        """Free image-to-image: single required input (node 42), optional nodes 18/43 use empty string."""
         select = RH_FAST_I2I_RATIO_SELECT.get(
             aspect_ratio, RH_FAST_I2I_RATIO_SELECT["9:16"]
         )
@@ -97,12 +94,12 @@ class RunningHubClient:
             {
                 "nodeId": "18",
                 "fieldName": "image",
-                "fieldValue": None,
+                "fieldValue": "",
             },
             {
                 "nodeId": "43",
                 "fieldName": "image",
-                "fieldValue": None,
+                "fieldValue": "",
             },
             {
                 "nodeId": "41",
@@ -124,11 +121,7 @@ class RunningHubClient:
         aspect_ratio: str,
         resolution: str = PRO_I2I_DEFAULT_RESOLUTION,
     ) -> list[dict[str, Any]]:
-        """Pro image-to-image: single required input (node 2).
-
-        Optional image nodes 3 / 4 / 5 must still be present with fieldValue=null
-        when unused (same pattern as free I2I nodes 18 / 43).
-        """
+        """Pro image-to-image: single required input (node 2), optional nodes 3/4/5 use empty string."""
         return [
             {
                 "nodeId": "2",
@@ -138,17 +131,17 @@ class RunningHubClient:
             {
                 "nodeId": "3",
                 "fieldName": "image",
-                "fieldValue": None,
+                "fieldValue": "",
             },
             {
                 "nodeId": "4",
                 "fieldName": "image",
-                "fieldValue": None,
+                "fieldValue": "",
             },
             {
                 "nodeId": "5",
                 "fieldName": "image",
-                "fieldValue": None,
+                "fieldValue": "",
             },
             {
                 "nodeId": "1",
@@ -399,6 +392,24 @@ class RunningHubClient:
         node_info_list: list[dict[str, str]],
         webhook_url: str | None = None,
     ) -> dict[str, Any]:
+        clean_node_info_list = [
+            node for node in node_info_list if node.get("fieldValue") is not None
+        ]
+        body: dict[str, Any] = {
+            "nodeInfoList": clean_node_info_list,
+            "instanceType": "plus",
+            "usePersonalQueue": "false",
+        }
+        if webhook_url:
+            body["webhookUrl"] = webhook_url
+
+        url = f"{self._base}/openapi/v2/run/ai-app/{app_id}"
+
+        if self._settings.is_development and self._settings.log_runninghub_payload:
+            payload_str = json.dumps(body, ensure_ascii=False, indent=2)
+            logger.info("RunningHub submit payload [app_id=%s, url=%s]:\n%s", app_id, url, payload_str)
+            print(f"\n================ [RunningHub Request Payload] app_id={app_id} ================\n{payload_str}\n=========================================================================\n", flush=True)
+
         if not self._key:
             # Dev stub when key missing
             logger.warning("RUNNINGHUB_API_KEY empty; returning stub task")
@@ -418,19 +429,16 @@ class RunningHubClient:
                 "_stub": True,
             }
 
-        body: dict[str, Any] = {
-            "nodeInfoList": node_info_list,
-            "instanceType": "plus",
-            "usePersonalQueue": "false",
-        }
-        if webhook_url:
-            body["webhookUrl"] = webhook_url
-
-        url = f"{self._base}/openapi/v2/run/ai-app/{app_id}"
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(url, headers=self._headers(), json=body)
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            error_code = str(data.get("errorCode") or "")
+            if error_code or not data.get("taskId"):
+                error_msg = data.get("errorMessage") or "Unknown error"
+                logger.error("RunningHub returned error code %s: %s", error_code, error_msg)
+                raise RuntimeError(f"RunningHub submit failed (code {error_code}): {error_msg}")
+            return data
 
     async def query(self, task_id: str) -> dict[str, Any]:
         if not self._key or task_id.startswith("stub-"):

@@ -16,6 +16,7 @@ from app.models.credit import (
     CreditReservationItem,
     CreditTransaction,
 )
+from app.models.creation_session import CreationSession
 from app.models.daily_usage import DailyUsageCounter
 from app.models.generation_model import GenerationModel
 from app.models.generation_task import GenerationAttempt, GenerationTask
@@ -38,6 +39,7 @@ __all__ = [
     "CreditReservation",
     "CreditReservationItem",
     "CreditTransaction",
+    "CreationSession",
     "DailyUsageCounter",
     "GenerationAttempt",
     "GenerationModel",

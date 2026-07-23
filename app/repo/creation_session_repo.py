@@ -49,6 +49,23 @@ class CreationSessionRepo(BaseRepo):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
+    async def list_owned(
+        self,
+        *,
+        user_id: str | None,
+        visitor_id: str | None,
+    ) -> list[CreationSession]:
+        stmt = select(CreationSession)
+        if user_id:
+            stmt = stmt.where(CreationSession.user_id == user_id)
+        elif visitor_id:
+            stmt = stmt.where(CreationSession.visitor_id == visitor_id)
+        else:
+            return []
+        stmt = stmt.order_by(CreationSession.updated_at.desc())
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
     async def list_tasks(self, session_id: str) -> list[GenerationTask]:
         stmt = (
             select(GenerationTask)

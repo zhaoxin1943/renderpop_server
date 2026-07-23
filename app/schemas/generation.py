@@ -11,8 +11,10 @@ from app.models.enums import TaskStatus, TaskType, TransferStatus
 
 class GenerationTaskResponse(BaseModel):
     job_id: str
+    session_id: str | None = None
     task_type: TaskType
     status: TaskStatus
+    prompt: str
     aspect_ratio: str
     credits_reserved: int = 0
     length: int | None = None
@@ -21,9 +23,28 @@ class GenerationTaskResponse(BaseModel):
     template_id: str | None = None
     result_transfer_status: TransferStatus | None = None
     result_urls: list[str] | None = None
+    input_url: str | None = None
     failure_code: str | None = None
     created_at: datetime | None = None
     completed_at: datetime | None = None
+
+
+class GeneratedAssetResponse(BaseModel):
+    """A successful user-owned generation ready for the asset library."""
+
+    job_id: str
+    task_type: TaskType
+    model_code: str | None = None
+    prompt: str
+    aspect_ratio: str
+    result_url: str
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class GeneratedAssetsResponse(BaseModel):
+    items: list[GeneratedAssetResponse]
+    next_offset: int | None = None
 
 
 class CreateGenerationBody(BaseModel):
@@ -70,6 +91,7 @@ class CreateGenerationBody(BaseModel):
             "Mutually exclusive with template_id."
         ),
     )
+    session_id: str | None = None
     client_request_id: str | None = None
 
 

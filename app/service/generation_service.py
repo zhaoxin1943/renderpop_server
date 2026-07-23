@@ -64,6 +64,7 @@ from app.core.errors import (
 from app.models.anonymous_visitor import AnonymousVisitor
 from app.models.asset import Asset
 from app.models.base import new_id, utc_now
+from app.models.creation_session import CreationSession
 from app.models.enums import (
     AssetStatus,
     AssetType,
@@ -88,6 +89,8 @@ from app.repo.generation_repo import GenerationRepo
 from app.schemas.generation import (
     DanceTemplateResponse,
     DanceTemplatesResponse,
+    GeneratedAssetResponse,
+    GeneratedAssetsResponse,
     GenerationJobOptions,
     GenerationOptionsResponse,
     GenerationQuoteResponse,
@@ -181,6 +184,7 @@ class GenerationService:
         input_asset_id: str | None = None,
         template_id: str | None = None,
         reference_video_asset_id: str | None = None,
+        session_id: str | None = None,
     ) -> GenerationTask:
         try:
             task_type = TaskType(task_type)
@@ -203,6 +207,7 @@ class GenerationService:
                 input_asset_id=input_asset_id,
                 template_id=template_id,
                 reference_video_asset_id=reference_video_asset_id,
+                session_id=session_id,
             )
         if task_type in _POLLO_VIDEO_TASK_TYPES:
             return await self._create_video_task(
@@ -216,6 +221,7 @@ class GenerationService:
                 resolution=resolution,
                 generate_audio=generate_audio,
                 input_asset_id=input_asset_id,
+                session_id=session_id,
             )
         return await self._create_image_task(
             user_id=user_id,
@@ -226,6 +232,7 @@ class GenerationService:
             idempotency_key=idempotency_key,
             resolution=resolution,
             input_asset_id=input_asset_id,
+            session_id=session_id,
         )
 
     def _image_option_fallback(self, task_type: TaskType) -> dict[str, Any]:
@@ -409,6 +416,7 @@ class GenerationService:
         idempotency_key: str,
         resolution: str | None = None,
         input_asset_id: str | None = None,
+        session_id: str | None = None,
     ) -> GenerationTask:
         prompt = (prompt or "").strip()
         if not prompt or len(prompt) > 2000:
@@ -525,6 +533,7 @@ class GenerationService:
             id=task_id,
             user_id=user_id,
             visitor_id=visitor_id,
+            creation_session_id=session_id,
             task_type=task_type,
             status=TaskStatus.QUEUED,
             prompt=prompt,
@@ -542,6 +551,8 @@ class GenerationService:
             result_transfer_status=TransferStatus.PENDING,
         )
         await self._repo.add(task)
+        await self._touch_creation_session(session_id)
+        await self._repo.session.commit()
         return task
 
     async def _validate_input_image_asset(
@@ -599,6 +610,7 @@ class GenerationService:
         input_asset_id: str | None,
         template_id: str | None,
         reference_video_asset_id: str | None,
+        session_id: str | None,
     ) -> GenerationTask:
         """Photo-to-dance via RunningHub: photo + preset or user reference video."""
         if not user_id:
@@ -688,6 +700,7 @@ class GenerationService:
             id=task_id,
             user_id=user_id,
             visitor_id=None,
+            creation_session_id=session_id,
             task_type=task_type,
             status=TaskStatus.QUEUED,
             prompt="",
@@ -705,6 +718,8 @@ class GenerationService:
             result_transfer_status=TransferStatus.PENDING,
         )
         await self._repo.add(task)
+        await self._touch_creation_session(session_id)
+        await self._repo.session.commit()
         return task
 
     async def list_dance_templates(self) -> DanceTemplatesResponse:
@@ -737,6 +752,7 @@ class GenerationService:
         resolution: str | None,
         generate_audio: bool | None,
         input_asset_id: str | None,
+        session_id: str | None,
     ) -> GenerationTask:
         if not user_id:
             raise AuthRequired("Login required for video generation")
@@ -839,6 +855,7 @@ class GenerationService:
             id=task_id,
             user_id=user_id,
             visitor_id=None,
+            creation_session_id=session_id,
             task_type=task_type,
             status=TaskStatus.QUEUED,
             prompt=prompt or "",
@@ -856,6 +873,8 @@ class GenerationService:
             result_transfer_status=TransferStatus.PENDING,
         )
         await self._repo.add(task)
+        await self._touch_creation_session(session_id)
+        await self._repo.session.commit()
         return task
 
     async def _check_concurrent(
@@ -873,6 +892,13 @@ class GenerationService:
         if active >= limit:
             raise ConcurrentJobLimit()
 
+    async def _touch_creation_session(self, session_id: str | None) -> None:
+        if not session_id:
+            return
+        creation_session = await self._repo.session.get(CreationSession, session_id)
+        if creation_session is not None:
+            creation_session.updated_at = utc_now()
+
     async def get_task(self, task_id: str, *, user_id: str | None) -> GenerationTask:
         task = await self._repo.get(task_id)
         if task is None:
@@ -880,6 +906,49 @@ class GenerationService:
         if user_id and task.user_id and task.user_id != user_id:
             raise NotFound("Task not found")
         return task
+
+    async def list_generated_assets(
+        self,
+        *,
+        user_id: str,
+        media_type: str,
+        limit: int = 60,
+        offset: int = 0,
+    ) -> GeneratedAssetsResponse:
+        """List successful output media owned by one signed-in user."""
+        task_types = (
+            list(_IMAGE_TASK_TYPES)
+            if media_type == "image"
+            else list(_VIDEO_TASK_TYPES)
+        )
+        tasks = await self._repo.list_for_user(
+            user_id,
+            task_types=task_types,
+            status=TaskStatus.SUCCEEDED,
+            limit=limit,
+            offset=offset,
+        )
+        items: list[GeneratedAssetResponse] = []
+        for task in tasks:
+            result_urls = await self._result_urls_for_client(task)
+            if not result_urls:
+                continue
+            items.append(
+                GeneratedAssetResponse(
+                    job_id=task.id,
+                    task_type=task.task_type,
+                    model_code=task.model_code,
+                    prompt=task.prompt,
+                    aspect_ratio=task.aspect_ratio,
+                    result_url=result_urls[0],
+                    created_at=task.created_at,
+                    completed_at=task.completed_at,
+                )
+            )
+        return GeneratedAssetsResponse(
+            items=items,
+            next_offset=offset + limit if len(tasks) == limit else None,
+        )
 
     def _job_options_from_catalog(
         self, task_type: TaskType, cat: dict[str, Any]
@@ -1094,7 +1163,7 @@ class GenerationService:
         task.status = TaskStatus.SUBMITTING
         task.submitted_at = datetime.now(UTC)
         task.attempt_count += 1
-        await self._repo.session.flush()
+        await self._repo.session.commit()
 
         try:
             nodes, app_id = await self._build_image_nodes(task)
@@ -1159,7 +1228,7 @@ class GenerationService:
         task.status = TaskStatus.SUBMITTING
         task.submitted_at = datetime.now(UTC)
         task.attempt_count += 1
-        await self._repo.session.flush()
+        await self._repo.session.commit()
 
         try:
             nodes, app_id = await self._build_dance_nodes(task)
@@ -1329,7 +1398,7 @@ class GenerationService:
         task.status = TaskStatus.SUBMITTING
         task.submitted_at = datetime.now(UTC)
         task.attempt_count += 1
-        await self._repo.session.flush()
+        await self._repo.session.commit()
 
         params = task.input_params or {}
         length = int(params.get("length") or VIDEO_DEFAULT_LENGTH)
@@ -1672,6 +1741,7 @@ class GenerationService:
 
     async def to_public(self, task: GenerationTask) -> GenerationTaskResponse:
         result_urls = await self._result_urls_for_client(task)
+        input_url = await self._input_url_for_client(task)
         params = task.input_params or {}
         generate_audio = params.get("generate_audio")
         if generate_audio is not None:
@@ -1679,8 +1749,10 @@ class GenerationService:
         template_id = params.get("template_id")
         return GenerationTaskResponse(
             job_id=task.id,
+            session_id=task.creation_session_id,
             task_type=task.task_type,
             status=task.status,
+            prompt=task.prompt,
             aspect_ratio=task.aspect_ratio,
             credits_reserved=task.credits_reserved,
             length=params.get("length"),
@@ -1689,6 +1761,7 @@ class GenerationService:
             template_id=str(template_id) if template_id else None,
             result_transfer_status=task.result_transfer_status,
             result_urls=result_urls,
+            input_url=input_url,
             failure_code=task.failure_code,
             created_at=task.created_at,
             completed_at=task.completed_at,
@@ -1719,6 +1792,18 @@ class GenerationService:
                 ]
                 return urls or None
         return None
+
+    async def _input_url_for_client(self, task: GenerationTask) -> str | None:
+        if not task.input_asset_id:
+            return None
+        asset = await self._repo.session.get(Asset, task.input_asset_id)
+        if asset is None or not asset.storage_key or asset.status != AssetStatus.READY:
+            return None
+        try:
+            return await self._s3.presign_get(asset.storage_key)
+        except Exception:
+            logger.exception("presign input failed asset=%s", asset.id)
+            return None
 
     def is_video_task(self, task: GenerationTask) -> bool:
         """Longer worker poll budget for Pollo video and RH dance."""

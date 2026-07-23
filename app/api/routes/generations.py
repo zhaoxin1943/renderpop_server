@@ -1,10 +1,19 @@
+from typing import Literal
+
 from fastapi import APIRouter, BackgroundTasks, Header, Query, Response, status
 
-from app.core.deps import GenerationServiceDep, OptionalUserIdDep, SettingsDep
+from app.core.deps import (
+    CreationSessionServiceDep,
+    GenerationServiceDep,
+    OptionalUserIdDep,
+    SettingsDep,
+    UserIdDep,
+)
 from app.core.errors import AppError
 from app.models.enums import TaskType
 from app.schemas.generation import (
     CreateGenerationBody,
+    GeneratedAssetsResponse,
     GenerationOptionsResponse,
     GenerationQuoteBody,
     GenerationQuoteResponse,
@@ -42,11 +51,28 @@ async def quote_generation(
     )
 
 
+@router.get("/assets", response_model=GeneratedAssetsResponse)
+async def list_generated_assets(
+    service: GenerationServiceDep,
+    user_id: UserIdDep,
+    media_type: Literal["image", "video"] = Query(default="image"),
+    limit: int = Query(default=60, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+) -> GeneratedAssetsResponse:
+    return await service.list_generated_assets(
+        user_id=user_id,
+        media_type=media_type,
+        limit=limit,
+        offset=offset,
+    )
+
+
 @router.post("", response_model=GenerationTaskResponse, status_code=status.HTTP_202_ACCEPTED)
 async def create_generation(
     body: CreateGenerationBody,
     response: Response,
     service: GenerationServiceDep,
+    creation_sessions: CreationSessionServiceDep,
     user_id: OptionalUserIdDep,
     settings: SettingsDep,
     background: BackgroundTasks,
@@ -62,6 +88,12 @@ async def create_generation(
         )
 
     try:
+        if body.session_id:
+            await creation_sessions.get_owned(
+                body.session_id,
+                user_id=user_id,
+                visitor_id=x_visitor_id,
+            )
         task = await service.create_task(
             user_id=user_id,
             visitor_id=x_visitor_id,
@@ -75,6 +107,7 @@ async def create_generation(
             input_asset_id=body.input_asset_id,
             template_id=body.template_id,
             reference_video_asset_id=body.reference_video_asset_id,
+            session_id=body.session_id,
         )
     except AppError:
         raise
