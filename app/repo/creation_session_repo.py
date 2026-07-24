@@ -39,7 +39,15 @@ class CreationSessionRepo(BaseRepo):
         user_id: str | None,
         visitor_id: str | None,
     ) -> CreationSession | None:
-        stmt = select(CreationSession)
+        has_tasks = (
+            select(GenerationTask.id)
+            .where(
+                GenerationTask.creation_session_id == CreationSession.id,
+                GenerationTask.status != TaskStatus.CANCELED,
+            )
+            .exists()
+        )
+        stmt = select(CreationSession).where(has_tasks)
         if user_id:
             stmt = stmt.where(CreationSession.user_id == user_id)
         elif visitor_id:
@@ -56,7 +64,15 @@ class CreationSessionRepo(BaseRepo):
         user_id: str | None,
         visitor_id: str | None,
     ) -> list[CreationSession]:
-        stmt = select(CreationSession)
+        has_tasks = (
+            select(GenerationTask.id)
+            .where(
+                GenerationTask.creation_session_id == CreationSession.id,
+                GenerationTask.status != TaskStatus.CANCELED,
+            )
+            .exists()
+        )
+        stmt = select(CreationSession).where(has_tasks)
         if user_id:
             stmt = stmt.where(CreationSession.user_id == user_id)
         elif visitor_id:

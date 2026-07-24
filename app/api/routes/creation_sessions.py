@@ -88,8 +88,12 @@ async def get_creation_session(
         user_id=user_id,
         visitor_id=x_visitor_id,
     )
-    return await _to_public(
+    public_session = await _to_public(
         creation_session,
         sessions=sessions,
         generations=generations,
     )
+    if not public_session.tasks:
+        from app.core.errors import NotFound
+        raise NotFound("Creation session not found")
+    return public_session
