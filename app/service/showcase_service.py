@@ -20,6 +20,8 @@ class ShowcaseService:
                     prompt=row.prompt,
                     image_url=row.image_url,
                     aspect_ratio=row.aspect_ratio,
+                    width=row.width,
+                    height=row.height,
                 )
                 for row in rows
             ]

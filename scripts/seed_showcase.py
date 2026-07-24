@@ -227,6 +227,8 @@ async def upsert_row(session: AsyncSession, item: dict, storage_key: str, image_
         row.image_url = image_url
         row.storage_key = storage_key
         row.aspect_ratio = item["aspect_ratio"]
+        row.width = item["width"]
+        row.height = item["height"]
         row.sort_order = item["sort_order"]
         row.is_active = True
         row.deleted_at = None
@@ -240,6 +242,8 @@ async def upsert_row(session: AsyncSession, item: dict, storage_key: str, image_
             image_url=image_url,
             storage_key=storage_key,
             aspect_ratio=item["aspect_ratio"],
+            width=item["width"],
+            height=item["height"],
             sort_order=item["sort_order"],
             is_active=True,
         )

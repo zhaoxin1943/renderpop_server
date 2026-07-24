@@ -29,6 +29,14 @@ class ShowcaseItem(SoftDeleteMixin, TimestampedModel, table=True):
         default="9:16",
         sa_column=Column(String(16), nullable=False, server_default="9:16"),
     )
+    width: int | None = Field(
+        default=None,
+        sa_column=Column(Integer, nullable=True),
+    )
+    height: int | None = Field(
+        default=None,
+        sa_column=Column(Integer, nullable=True),
+    )
     sort_order: int = Field(
         default=0,
         sa_column=Column(Integer, nullable=False, server_default="0", index=True),

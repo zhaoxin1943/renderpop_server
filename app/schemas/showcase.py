@@ -11,6 +11,8 @@ class ShowcaseItemResponse(BaseModel):
     prompt: str
     image_url: str
     aspect_ratio: str = "9:16"
+    width: int | None = None
+    height: int | None = None
 
 
 class ShowcaseListResponse(BaseModel):
