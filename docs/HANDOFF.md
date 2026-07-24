@@ -17,7 +17,7 @@
 - 节点：`299` 用户照片 URL；`275` 预置模板视频或用户上传参考视频；`451`/`450` 输出宽高比（须与参考视频一致）；其余节点保持文档默认
 - 积分：非会员 **120** / 有效会员 **100**（`generation_models.pricing_config` + plan 解析）
 - create 入参：`input_asset_id` + 二选一 `template_id` | `reference_video_asset_id` + `aspect_ratio`
-- 预置模板：`GET /api/v1/dance/templates`（常量 4 个，暂不建 `dance_templates` 表）
+- 预置模板：`GET /api/v1/dance/templates`（常量 9 个，视频与缩略图位于 `renderpop-assets/dance/templates/`，暂不建 `dance_templates` 表）
 - 上传：`purpose=dance_photo`（图）/ `dance_reference_video`（视频，`INPUT_VIDEO`，≤100MB）
 - seed：`RH_DANCE_VIDEO` → `python -m scripts.seed_generation_models`
 - **未做**：consent 落库、人脸检测、模板 DB 管理、会员价展示 UI 细节
