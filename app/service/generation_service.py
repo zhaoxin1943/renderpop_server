@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -15,7 +16,6 @@ from app.core.commerce import (
     DANCE_CREDITS_MEMBER,
     DANCE_DEFAULT_ASPECT_RATIO,
     DANCE_PRICING_VERSION,
-    DANCE_TEMPLATES,
     DEFAULT_ASPECT_RATIO,
     FAST_ASPECT_RATIOS,
     FAST_I2I_ALLOWED_ASPECT_RATIOS,
@@ -46,13 +46,12 @@ from app.core.commerce import (
     VIDEO_DEFAULT_RESOLUTION,
     VIDEO_SUPPORTED_ASPECT_RATIOS,
     VIDEO_SUPPORTED_RESOLUTIONS,
+    video_credits_from_pricing_config,
     dance_credits_from_pricing_config,
     default_dance_pricing_config,
-    get_dance_template,
     image_credits_from_pricing_config,
     pricing_requires_login,
     pricing_uses_fast_daily_quota,
-    video_credits_from_pricing_config,
 )
 from app.core.config import Settings
 from app.core.errors import (
@@ -61,6 +60,8 @@ from app.core.errors import (
     NotFound,
     ValidationFailed,
 )
+from app.core.redis import get_redis_client
+from app.core.redis_keys import redis_key
 from app.models.anonymous_visitor import AnonymousVisitor
 from app.models.asset import Asset
 from app.models.base import new_id, utc_now
@@ -84,6 +85,7 @@ from app.models.generation_task import GenerationAttempt, GenerationTask
 from app.providers.pollo import PROVIDER_IMAGE_URL_EXPIRES, PolloClient
 from app.providers.runninghub import RunningHubClient
 from app.providers.s3 import S3Storage
+from app.repo.dance_template_repo import DanceTemplateRepo
 from app.repo.generation_model_repo import GenerationModelRepo
 from app.repo.generation_repo import GenerationRepo
 from app.schemas.generation import (
@@ -153,6 +155,7 @@ class GenerationService:
         pollo: PolloClient | None = None,
         s3: S3Storage | None = None,
         model_repo: GenerationModelRepo | None = None,
+        dance_repo: DanceTemplateRepo | None = None,
     ) -> None:
         self._repo = generation_repo
         self._credits = credit_service
@@ -162,6 +165,7 @@ class GenerationService:
         self._pollo = pollo or PolloClient(settings)
         self._s3 = s3 or S3Storage(settings)
         self._models = model_repo or GenerationModelRepo(generation_repo.session)
+        self._dance_templates = dance_repo or DanceTemplateRepo(generation_repo.session)
 
     async def _ensure_visitor(self, visitor_id: str | None) -> str | None:
         if not visitor_id:
@@ -650,7 +654,7 @@ class GenerationService:
         ref_video_id: str | None = None
         duration = int(length) if length and length > 0 else 10
         if has_template:
-            template = get_dance_template(str(template_id).strip())
+            template = await self._get_dance_template_by_id(str(template_id).strip())
             if template is None:
                 raise ValidationFailed(
                     "unknown template_id", code="TEMPLATE_UNAVAILABLE"
@@ -745,21 +749,49 @@ class GenerationService:
         return task
 
     async def list_dance_templates(self) -> DanceTemplatesResponse:
-        templates = sorted(DANCE_TEMPLATES, key=lambda t: t.sort_order)
-        return DanceTemplatesResponse(
-            templates=[
-                DanceTemplateResponse(
-                    id=t.id,
-                    title=t.title,
-                    duration_seconds=t.duration_seconds,
-                    video_url=t.video_url,
-                    poster_url=t.poster_url,
-                    aspect_ratio=t.aspect_ratio,
-                    sort_order=t.sort_order,
+        redis_client = get_redis_client()
+        cache_key = redis_key("dance_templates", "active")
+
+        # 1. Try reading from Redis cache
+        try:
+            cached_data = await redis_client.get(cache_key)
+            if cached_data:
+                items = json.loads(cached_data)
+                return DanceTemplatesResponse(
+                    templates=[DanceTemplateResponse(**item) for item in items]
                 )
-                for t in templates
-            ]
-        )
+        except Exception as err:
+            logger.warning(f"Failed to read dance templates from Redis: {err}")
+
+        # 2. Query active templates from DB
+        response_items: list[DanceTemplateResponse] = []
+        try:
+            db_templates = await self._dance_templates.list_active()
+            if db_templates:
+                response_items = [
+                    DanceTemplateResponse(
+                        id=t.id,
+                        title=t.title,
+                        duration_seconds=t.duration_seconds,
+                        video_url=t.video_url,
+                        poster_url=t.poster_url,
+                        aspect_ratio=t.aspect_ratio,
+                        sort_order=t.sort_order,
+                    )
+                    for t in db_templates
+                ]
+        except Exception as err:
+            logger.warning(f"Failed to fetch dance templates from DB: {err}")
+
+        # 3. Write back to Redis cache (TTL 1 hour) if response_items present
+        if response_items:
+            try:
+                cache_payload = [item.model_dump() for item in response_items]
+                await redis_client.set(cache_key, json.dumps(cache_payload), ex=3600)
+            except Exception as err:
+                logger.warning(f"Failed to write dance templates to Redis: {err}")
+
+        return DanceTemplatesResponse(templates=response_items)
 
     async def _create_video_task(
         self,
@@ -1364,7 +1396,7 @@ class GenerationService:
         else:
             video_url = params.get("template_video_url")
             if not video_url and params.get("template_id"):
-                tmpl = get_dance_template(str(params["template_id"]))
+                tmpl = await self._get_dance_template_by_id(str(params["template_id"]))
                 if tmpl:
                     video_url = tmpl.video_url
         if not video_url:

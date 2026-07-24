@@ -21,6 +21,7 @@ from app.providers.s3 import S3Storage
 from app.repo.base import BaseRepo
 from app.repo.creation_session_repo import CreationSessionRepo
 from app.repo.credit_repo import CreditRepo
+from app.repo.dance_template_repo import DanceTemplateRepo
 from app.repo.generation_model_repo import GenerationModelRepo
 from app.repo.generation_repo import GenerationRepo
 from app.repo.health_repo import HealthRepo
@@ -96,6 +97,10 @@ def get_showcase_repo(session: SessionDep) -> ShowcaseRepo:
     return ShowcaseRepo(session)
 
 
+def get_dance_template_repo(session: SessionDep) -> DanceTemplateRepo:
+    return DanceTemplateRepo(session)
+
+
 HealthRepoDep = Annotated[HealthRepo, Depends(get_health_repo)]
 UserRepoDep = Annotated[UserRepo, Depends(get_user_repo)]
 CreditRepoDep = Annotated[CreditRepo, Depends(get_credit_repo)]
@@ -107,6 +112,7 @@ GenerationRepoDep = Annotated[GenerationRepo, Depends(get_generation_repo)]
 GenerationModelRepoDep = Annotated[GenerationModelRepo, Depends(get_generation_model_repo)]
 UsageRepoDep = Annotated[UsageRepo, Depends(get_usage_repo)]
 ShowcaseRepoDep = Annotated[ShowcaseRepo, Depends(get_showcase_repo)]
+DanceTemplateRepoDep = Annotated[DanceTemplateRepo, Depends(get_dance_template_repo)]
 
 
 # --- services ---
@@ -141,6 +147,7 @@ def get_s3_storage(settings: SettingsDep) -> S3Storage:
 def get_generation_service(
     gen_repo: GenerationRepoDep,
     model_repo: GenerationModelRepoDep,
+    dance_repo: DanceTemplateRepoDep,
     credits: Annotated[CreditService, Depends(get_credit_service)],
     entitlements: Annotated[EntitlementService, Depends(get_entitlement_service)],
     settings: SettingsDep,
@@ -155,6 +162,7 @@ def get_generation_service(
         pollo=PolloClient(settings),
         s3=s3,
         model_repo=model_repo,
+        dance_repo=dance_repo,
     )
 
 

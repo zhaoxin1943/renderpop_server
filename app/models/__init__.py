@@ -18,6 +18,7 @@ from app.models.credit import (
 )
 from app.models.creation_session import CreationSession
 from app.models.daily_usage import DailyUsageCounter
+from app.models.dance_template import DanceTemplate
 from app.models.generation_model import GenerationModel
 from app.models.generation_task import GenerationAttempt, GenerationTask
 from app.models.identity import Identity
@@ -41,6 +42,7 @@ __all__ = [
     "CreditTransaction",
     "CreationSession",
     "DailyUsageCounter",
+    "DanceTemplate",
     "GenerationAttempt",
     "GenerationModel",
     "GenerationTask",

@@ -126,94 +126,7 @@ class DanceTemplate:
     sort_order: int = 0
 
 
-# Public template videos hosted in the RenderPop assets bucket.
-DANCE_TEMPLATES: Final[tuple[DanceTemplate, ...]] = (
-    DanceTemplate(
-        id="dance-01",
-        title="Blue Tempo",
-        duration_seconds=13,
-        video_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/1.mp4",
-        poster_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/1.png",
-        aspect_ratio="9:16",
-        sort_order=10,
-    ),
-    DanceTemplate(
-        id="dance-02",
-        title="Soft Bounce",
-        duration_seconds=6,
-        video_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/2.mp4",
-        poster_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/2.png",
-        aspect_ratio="9:16",
-        sort_order=20,
-    ),
-    DanceTemplate(
-        id="dance-03",
-        title="Midnight Step",
-        duration_seconds=8,
-        video_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/3.mp4",
-        poster_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/3.png",
-        aspect_ratio="9:16",
-        sort_order=30,
-    ),
-    DanceTemplate(
-        id="dance-04",
-        title="Pop Routine",
-        duration_seconds=9,
-        video_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/4.mp4",
-        poster_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/4.png",
-        aspect_ratio="9:16",
-        sort_order=40,
-    ),
-    DanceTemplate(
-        id="dance-05",
-        title="Ribbon Walk",
-        duration_seconds=12,
-        video_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/5.mp4",
-        poster_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/5.png",
-        aspect_ratio="9:16",
-        sort_order=50,
-    ),
-    DanceTemplate(
-        id="dance-06",
-        title="Balcony Beat",
-        duration_seconds=10,
-        video_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/6.mp4",
-        poster_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/6.png",
-        aspect_ratio="9:16",
-        sort_order=60,
-    ),
-    DanceTemplate(
-        id="dance-07",
-        title="After Dark",
-        duration_seconds=8,
-        video_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/7.mp4",
-        poster_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/7.png",
-        aspect_ratio="9:16",
-        sort_order=70,
-    ),
-    DanceTemplate(
-        id="dance-08",
-        title="Bodyline",
-        duration_seconds=10,
-        video_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/8.mp4",
-        poster_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/8.png",
-        aspect_ratio="9:16",
-        sort_order=80,
-    ),
-    DanceTemplate(
-        id="dance-09",
-        title="Side Step",
-        duration_seconds=6,
-        video_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/9.mp4",
-        poster_url="https://s3.us-east-2.amazonaws.com/renderpop-assets/dance/templates/9.png",
-        aspect_ratio="9:16",
-        sort_order=90,
-    ),
-)
 
-DANCE_TEMPLATES_BY_ID: Final[dict[str, DanceTemplate]] = {
-    t.id: t for t in DANCE_TEMPLATES
-}
 
 PRO_DEFAULT_QUALITY: Final = "medium"
 PRO_DEFAULT_RESOLUTION: Final = "2k"
@@ -367,10 +280,6 @@ def dance_credits_from_pricing_config(
 def image_credits_from_pricing_config(pricing_config: dict | None) -> int:
     """Credits for FIXED/quota image models (0 for free daily)."""
     return int((pricing_config or {}).get("credits", 0))
-
-
-def get_dance_template(template_id: str) -> DanceTemplate | None:
-    return DANCE_TEMPLATES_BY_ID.get(template_id)
 
 
 def pricing_uses_fast_daily_quota(pricing_config: dict | None) -> bool:
