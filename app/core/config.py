@@ -42,6 +42,7 @@ class Settings(BaseSettings):
     public_api_base_url: str = "http://localhost:8000"
 
     runninghub_api_key: str = ""
+    runninghub_enterprise_api_key: str = ""
     runninghub_base_url: str = "https://www.runninghub.ai"
     log_runninghub_payload: bool = False
 

@@ -81,8 +81,8 @@ RH_FAST_APP_ID: Final = "2016540100959674370"
 RH_PRO_APP_ID: Final = "2070881747880992769"
 RH_FAST_I2I_APP_ID: Final = "2003708796583198721"
 RH_PRO_I2I_APP_ID: Final = "2061699451919618049"
-# Photo-to-dance video AI App (docs/dance.md)
-RH_DANCE_APP_ID: Final = "1975951975441412098"
+# RunningHub Kling v2.6 Motion Control Standard API
+RH_DANCE_APP_ID: Final = "kling-v2.6-std/motion-control"
 
 RH_FAST_IMAGE_MODEL_CODE: Final = "RH_FAST_IMAGE"
 RH_PRO_IMAGE_MODEL_CODE: Final = "RH_PRO_IMAGE"
@@ -94,11 +94,14 @@ IMAGE_FAST_PRICING_VERSION: Final = "image-fast"
 IMAGE_PRO_PRICING_VERSION: Final = "image-pro"
 IMAGE_FAST_I2I_PRICING_VERSION: Final = "image-fast-i2i"
 IMAGE_PRO_I2I_PRICING_VERSION: Final = "image-pro-i2i"
-DANCE_PRICING_VERSION: Final = "dance-v1"
+DANCE_PRICING_VERSION: Final = "dance-v2-per-second"
 
-# PRD §3.1 / §8.3: free 120, active member 100
-DANCE_CREDITS_FREE: Final = 120
-DANCE_CREDITS_MEMBER: Final = 100
+# Per-second pricing for RunningHub Motion Control ($0.06/s -> $0.15/s -> 15 credits/s)
+DANCE_CREDITS_PER_SECOND: Final = 15
+DANCE_CREDITS_PER_SECOND_MEMBER: Final = 14
+DANCE_MIN_CREDITS: Final = 30
+DANCE_CREDITS_FREE: Final = 150
+DANCE_CREDITS_MEMBER: Final = 140
 DANCE_DEFAULT_ASPECT_RATIO: Final = "9:16"
 DANCE_ASPECT_RATIOS: Final[tuple[str, ...]] = (
     "9:16",
@@ -328,24 +331,37 @@ def default_rh_fixed_pricing_config(
 
 
 def default_dance_pricing_config() -> dict:
-    return default_rh_fixed_pricing_config(
-        credits=DANCE_CREDITS_FREE,
-        credits_member=DANCE_CREDITS_MEMBER,
-        requires_login=True,
-        pricing_version=DANCE_PRICING_VERSION,
-    )
+    return {
+        "type": "per_second",
+        "credits_per_second": DANCE_CREDITS_PER_SECOND,
+        "credits_per_second_member": DANCE_CREDITS_PER_SECOND_MEMBER,
+        "min_credits": DANCE_MIN_CREDITS,
+        "requires_login": True,
+        "pricing_version": DANCE_PRICING_VERSION,
+    }
 
 
 def dance_credits_from_pricing_config(
     pricing_config: dict | None,
     *,
-    is_member: bool,
+    length: int = 10,
+    is_member: bool = False,
 ) -> int:
-    """Resolve Dance credits: free-tier vs active membership."""
+    """Resolve Dance credits: per-second calculation based on video duration."""
     cfg = pricing_config or {}
-    free = int(cfg.get("credits", DANCE_CREDITS_FREE))
-    member = int(cfg.get("credits_member", DANCE_CREDITS_MEMBER))
-    return member if is_member else free
+    ptype = cfg.get("type", "per_second")
+    if ptype == "fixed":
+        free = int(cfg.get("credits", DANCE_CREDITS_FREE))
+        member = int(cfg.get("credits_member", DANCE_CREDITS_MEMBER))
+        return member if is_member else free
+
+    rate_non_member = int(cfg.get("credits_per_second", DANCE_CREDITS_PER_SECOND))
+    rate_member = int(cfg.get("credits_per_second_member", DANCE_CREDITS_PER_SECOND_MEMBER))
+    rate = rate_member if is_member else rate_non_member
+    min_credits = int(cfg.get("min_credits", DANCE_MIN_CREDITS))
+
+    total = int(round(length * rate))
+    return max(total, min_credits)
 
 
 def image_credits_from_pricing_config(pricing_config: dict | None) -> int:

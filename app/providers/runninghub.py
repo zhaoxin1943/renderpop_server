@@ -33,10 +33,15 @@ class RunningHubClient:
         self._base = settings.runninghub_base_url.rstrip("/")
         self._key = settings.runninghub_api_key
 
-    def _headers(self) -> dict[str, str]:
+    def _headers(self, is_enterprise: bool = False) -> dict[str, str]:
+        key = (
+            self._settings.runninghub_enterprise_api_key or self._key
+            if is_enterprise
+            else self._key
+        )
         return {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {self._key}",
+            "Authorization": f"Bearer {key}",
         }
 
     @staticmethod
@@ -461,11 +466,71 @@ class RunningHubClient:
         async with httpx.AsyncClient(timeout=60.0) as client:
             resp = await client.post(
                 url,
-                headers=self._headers(),
+                headers=self._headers(is_enterprise=True),
                 json={"taskId": task_id},
             )
             resp.raise_for_status()
             return resp.json()
+
+    async def submit_kling_motion_control(
+        self,
+        *,
+        image_url: str,
+        video_url: str,
+        character_orientation: str = "video",
+        prompt: str | None = None,
+        keep_original_sound: str = "yes",
+        webhook_url: str | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "imageUrl": image_url,
+            "videoUrl": video_url,
+            "characterOrientation": character_orientation,
+            "prompt": prompt,
+            "keepOriginalSound": keep_original_sound,
+        }
+        if webhook_url:
+            body["webhookUrl"] = webhook_url
+
+        url = f"{self._base}/openapi/v2/kling-v2.6-std/motion-control"
+
+        if self._settings.is_development and self._settings.log_runninghub_payload:
+            payload_str = json.dumps(body, ensure_ascii=False, indent=2)
+            logger.info("RunningHub Kling Motion Control payload [url=%s]:\n%s", url, payload_str)
+
+        key = self._settings.runninghub_enterprise_api_key or self._key
+        if not key:
+            logger.warning("RUNNINGHUB_ENTERPRISE_API_KEY empty; returning stub task")
+            return {
+                "taskId": "stub-kling-dance",
+                "status": "SUCCESS",
+                "results": [
+                    {
+                        "url": "https://example.com/stub.mp4",
+                        "nodeId": "1",
+                        "outputType": "mp4",
+                        "text": None,
+                    }
+                ],
+                "errorCode": "",
+                "errorMessage": "",
+                "_stub": True,
+            }
+
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            resp = await client.post(
+                url,
+                headers=self._headers(is_enterprise=True),
+                json=body,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            error_code = str(data.get("errorCode") or "")
+            if error_code or not data.get("taskId"):
+                error_msg = data.get("errorMessage") or "Unknown error"
+                logger.error("RunningHub Kling Motion Control error %s: %s", error_code, error_msg)
+                raise RuntimeError(f"RunningHub Kling Motion Control submit failed (code {error_code}): {error_msg}")
+            return data
 
 
 

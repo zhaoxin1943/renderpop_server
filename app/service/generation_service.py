@@ -204,6 +204,7 @@ class GenerationService:
                 task_type=task_type,
                 aspect_ratio=aspect_ratio,
                 idempotency_key=idempotency_key,
+                length=length,
                 input_asset_id=input_asset_id,
                 template_id=template_id,
                 reference_video_asset_id=reference_video_asset_id,
@@ -607,6 +608,7 @@ class GenerationService:
         task_type: TaskType,
         aspect_ratio: str | None,
         idempotency_key: str,
+        length: int | None = None,
         input_asset_id: str | None,
         template_id: str | None,
         reference_video_asset_id: str | None,
@@ -629,10 +631,10 @@ class GenerationService:
         await self._validate_input_image_asset(
             user_id=user_id, input_asset_id=input_asset_id
         )
-
         template = None
         template_video_url: str | None = None
         ref_video_id: str | None = None
+        duration = int(length) if length and length > 0 else 10
         if has_template:
             template = get_dance_template(str(template_id).strip())
             if template is None:
@@ -641,12 +643,16 @@ class GenerationService:
                 )
             template_video_url = template.video_url
             default_ar = template.aspect_ratio or DANCE_DEFAULT_ASPECT_RATIO
+            if not length:
+                duration = int(template.duration_seconds or 10)
         else:
-            await self._validate_input_video_asset(
+            video_asset = await self._validate_input_video_asset(
                 user_id=user_id, video_asset_id=reference_video_asset_id
             )
             ref_video_id = str(reference_video_asset_id).strip()
             default_ar = DANCE_DEFAULT_ASPECT_RATIO
+            if not length and getattr(video_asset, "duration_seconds", None):
+                duration = int(video_asset.duration_seconds)
 
         model = await self._models.get_default_for_task_type(task_type)
         cat = self._resolve_image_catalog(task_type, model)
@@ -666,7 +672,7 @@ class GenerationService:
         plan = await self._entitlements.resolve_plan(user_id)
         is_member = plan in _MEMBER_PLANS
         cfg = cat.get("pricing_config") or default_dance_pricing_config()
-        credits = dance_credits_from_pricing_config(cfg, is_member=is_member)
+        credits = dance_credits_from_pricing_config(cfg, length=duration, is_member=is_member)
         app_id = str(cat["app_id"] or RH_DANCE_APP_ID)
 
         task_id = new_id()
@@ -1098,7 +1104,10 @@ class GenerationService:
             )
             is_member = plan in _MEMBER_PLANS
             cfg = cat.get("pricing_config") or default_dance_pricing_config()
-            credits = dance_credits_from_pricing_config(cfg, is_member=is_member)
+            req_length = int(length) if length and length > 0 else 10
+            credits = dance_credits_from_pricing_config(
+                cfg, length=req_length, is_member=is_member
+            )
             available = None
             can = None
             if user_id:
@@ -1108,7 +1117,7 @@ class GenerationService:
             return GenerationQuoteResponse(
                 job_type=task_type,
                 credits_required=credits,
-                length=0,
+                length=req_length,
                 resolution="",
                 generate_audio=None,
                 can_generate=can,
@@ -1256,7 +1265,7 @@ class GenerationService:
         await self._repo.session.commit()
 
         try:
-            nodes, app_id = await self._build_dance_nodes(task)
+            image_url, video_url = await self._resolve_dance_inputs(task)
         except Exception as exc:
             logger.exception("RH dance input build failed task=%s", task.id)
             await self._fail_task(task, FailureCode.PROVIDER_SUBMIT_FAILED, str(exc))
@@ -1270,9 +1279,12 @@ class GenerationService:
             )
 
         try:
-            resp = await self._rh.submit(
-                app_id=app_id,
-                node_info_list=nodes,
+            resp = await self._rh.submit_kling_motion_control(
+                image_url=image_url,
+                video_url=video_url,
+                character_orientation="video",
+                prompt=task.prompt,
+                keep_original_sound="yes",
                 webhook_url=webhook_url,
             )
         except Exception as exc:
@@ -1286,13 +1298,6 @@ class GenerationService:
         task.provider_status = provider_status
         task.started_at = datetime.now(UTC)
 
-        safe_nodes = []
-        for n in nodes:
-            fn = n.get("fieldName")
-            if fn in ("image", "video") and n.get("fieldValue"):
-                safe_nodes.append({**n, "fieldValue": f"[{fn}_url]"})
-            else:
-                safe_nodes.append(n)
         await self._repo.add_attempt(
             GenerationAttempt(
                 id=new_id(),
@@ -1300,7 +1305,11 @@ class GenerationService:
                 attempt_no=task.attempt_count,
                 status=AttemptStatus.SUBMITTED,
                 provider_task_id=provider_task_id or None,
-                request_meta={"app_id": app_id, "nodes": safe_nodes},
+                request_meta={
+                    "model": "kling-v2.6-std/motion-control",
+                    "imageUrl": "[masked_image_url]",
+                    "videoUrl": "[masked_video_url]",
+                },
                 response_meta=resp,
             )
         )
@@ -1312,15 +1321,10 @@ class GenerationService:
         await self._repo.session.flush()
         return task
 
-    async def _build_dance_nodes(
+    async def _resolve_dance_inputs(
         self, task: GenerationTask
-    ) -> tuple[list[dict[str, Any]], str]:
+    ) -> tuple[str, str]:
         params = task.input_params or {}
-        app_id = str(
-            task.provider_app_id
-            or params.get("app_id")
-            or RH_DANCE_APP_ID
-        )
         image_url = await self._presign_input_image_url(task)
 
         video_url: str | None = None
@@ -1348,12 +1352,7 @@ class GenerationService:
         if not video_url:
             raise ValidationFailed("missing reference video url")
 
-        nodes = self._rh.build_dance_node_list(
-            image_url=image_url,
-            video_url=str(video_url),
-            aspect_ratio=task.aspect_ratio or DANCE_DEFAULT_ASPECT_RATIO,
-        )
-        return nodes, app_id
+        return image_url, str(video_url)
 
     async def _build_image_nodes(
         self, task: GenerationTask

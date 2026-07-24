@@ -104,3 +104,27 @@ def test_rh_image_pricing_helpers() -> None:
     assert pricing_uses_fast_daily_quota(fixed) is False
     assert pricing_requires_login(quota, default=True) is False
     assert pricing_requires_login(fixed, default=False) is True
+
+
+def test_dance_per_second_pricing() -> None:
+    from app.core.commerce import (
+        dance_credits_from_pricing_config,
+        default_dance_pricing_config,
+    )
+
+    cfg = default_dance_pricing_config()
+    # 5s -> 5 * 15 = 75
+    assert dance_credits_from_pricing_config(cfg, length=5, is_member=False) == 75
+    # 5s member -> 5 * 14 = 70
+    assert dance_credits_from_pricing_config(cfg, length=5, is_member=True) == 70
+
+    # 10s -> 10 * 15 = 150
+    assert dance_credits_from_pricing_config(cfg, length=10, is_member=False) == 150
+    # 10s member -> 10 * 14 = 140
+    assert dance_credits_from_pricing_config(cfg, length=10, is_member=True) == 140
+
+    # 15s -> 15 * 15 = 225
+    assert dance_credits_from_pricing_config(cfg, length=15, is_member=False) == 225
+
+    # 1s min credit check -> max(1*15, 30) = 30
+    assert dance_credits_from_pricing_config(cfg, length=1, is_member=False) == 30
