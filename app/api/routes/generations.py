@@ -149,9 +149,9 @@ async def create_generation(
     except AppError:
         raise
 
-    # Enqueue worker; fallback to background if broker unavailable
+    # Dispatch pending tasks (assigns slots and enqueues worker)
     try:
-        run_generation_job.send(task.id)
+        await service.dispatch_pending_jobs()
     except Exception:
         if settings.is_development:
             background.add_task(_run_inline, task.id)

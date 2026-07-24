@@ -236,7 +236,7 @@ class TaskStatus(StrEnum):
 
     @classmethod
     def submittable(cls) -> frozenset[TaskStatus]:
-        return frozenset({cls.CREATED, cls.QUEUED})
+        return frozenset({cls.CREATED, cls.QUEUED, cls.SUBMITTING})
 
     @classmethod
     def pollable(cls) -> frozenset[TaskStatus]:

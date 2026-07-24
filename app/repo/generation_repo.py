@@ -84,3 +84,89 @@ class GenerationRepo(BaseRepo):
         await self.session.delete(task)
         await self.session.flush()
 
+    async def count_active_by_provider(self, provider: GenerationProvider) -> int:
+        """Count tasks currently occupying provider slots (PROCESSING or SUBMITTING)."""
+        stmt = (
+            select(func.count())
+            .select_from(GenerationTask)
+            .where(
+                GenerationTask.provider == provider,
+                GenerationTask.status.in_({TaskStatus.PROCESSING, TaskStatus.SUBMITTING}),
+            )
+        )
+        result = await self.session.execute(stmt)
+        return int(result.scalar_one())
+
+    async def fetch_next_queued_tasks(
+        self, provider: GenerationProvider, limit: int
+    ) -> list[GenerationTask]:
+        """Fetch next QUEUED tasks for provider sorted by priority DESC, created_at ASC."""
+        if limit <= 0:
+            return []
+        stmt = (
+            select(GenerationTask)
+            .where(
+                GenerationTask.provider == provider,
+                GenerationTask.status == TaskStatus.QUEUED,
+            )
+            .order_by(GenerationTask.priority.desc(), GenerationTask.created_at.asc())
+            .limit(limit)
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def fetch_all_queued_tasks_by_provider(
+        self, provider: GenerationProvider
+    ) -> list[GenerationTask]:
+        """Fetch all QUEUED tasks for a specific provider sorted by priority DESC, created_at ASC."""
+        stmt = (
+            select(GenerationTask)
+            .where(
+                GenerationTask.provider == provider,
+                GenerationTask.status == TaskStatus.QUEUED,
+            )
+            .order_by(GenerationTask.priority.desc(), GenerationTask.created_at.asc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+    async def count_queued_ahead(
+        self,
+        *,
+        task_id: str,
+        provider: GenerationProvider | None,
+        priority: int,
+        created_at: Any,
+    ) -> int:
+        """Count QUEUED tasks ahead of this task in priority order."""
+        from sqlalchemy import or_
+
+        stmt = select(func.count()).select_from(GenerationTask).where(
+            GenerationTask.status == TaskStatus.QUEUED,
+            GenerationTask.id != task_id,
+        )
+        if provider:
+            stmt = stmt.where(GenerationTask.provider == provider)
+        stmt = stmt.where(
+            or_(
+                GenerationTask.priority > priority,
+                (GenerationTask.priority == priority) & (GenerationTask.created_at < created_at),
+            )
+        )
+        result = await self.session.execute(stmt)
+        return int(result.scalar_one())
+
+    async def fetch_expired_queued_tasks(self, cutoff_time: Any) -> list[GenerationTask]:
+        """Fetch QUEUED tasks created before cutoff_time (e.g. 20 minutes ago)."""
+        stmt = (
+            select(GenerationTask)
+            .where(
+                GenerationTask.status == TaskStatus.QUEUED,
+                GenerationTask.created_at < cutoff_time,
+            )
+            .order_by(GenerationTask.created_at.asc())
+        )
+        result = await self.session.execute(stmt)
+        return list(result.scalars().all())
+
+

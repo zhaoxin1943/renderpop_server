@@ -58,6 +58,10 @@ class GenerationTask(TimestampedModel, table=True):
             index=True,
         ),
     )
+    priority: int = Field(
+        default=1000,
+        sa_column=Column(Integer, nullable=False, server_default="1000", index=True),
+    )
     prompt: str = Field(sa_column=Column(Text, nullable=False))
     aspect_ratio: str = Field(sa_column=Column(String(16), nullable=False))
     # Catalog model used for this job (video); null for legacy image rows

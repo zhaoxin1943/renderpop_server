@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from app.core.commerce import (
@@ -125,6 +125,12 @@ _OPTIONS_TASK_ORDER: tuple[TaskType, ...] = (
     TaskType.DANCE_VIDEO,
 )
 _MEMBER_PLANS = frozenset({PLAN_CREATOR, PLAN_PRO})
+_PLAN_PRIORITIES: dict[PlanCode, int] = {
+    PlanCode.PRO: 3000,
+    PlanCode.CREATOR: 2000,
+    PlanCode.FREE: 1000,
+    PlanCode.VISITOR: 500,
+}
 
 # Unseeded fallback app ids (create/submit when generation_models missing).
 _FALLBACK_RH_APP_ID: dict[TaskType, str] = {
@@ -168,6 +174,12 @@ class GenerationService:
         self._repo.session.add(visitor)
         await self._repo.session.flush()
         return visitor.id
+
+    async def _resolve_priority(self, user_id: str | None) -> int:
+        if not user_id:
+            return _PLAN_PRIORITIES[PlanCode.VISITOR]
+        plan = await self._entitlements.resolve_plan(user_id)
+        return _PLAN_PRIORITIES.get(plan, _PLAN_PRIORITIES[PlanCode.FREE])
 
     async def create_task(
         self,
@@ -530,6 +542,7 @@ class GenerationService:
                 input_params = self._rh.input_params_for_pro(aspect_ratio)
             input_params["app_id"] = app_id
 
+        priority = await self._resolve_priority(user_id)
         task = GenerationTask(
             id=task_id,
             user_id=user_id,
@@ -537,6 +550,7 @@ class GenerationService:
             creation_session_id=session_id,
             task_type=task_type,
             status=TaskStatus.QUEUED,
+            priority=priority,
             prompt=prompt,
             aspect_ratio=aspect_ratio,
             model_id=model.id if model is not None else None,
@@ -702,6 +716,7 @@ class GenerationService:
         )
         input_params["app_id"] = app_id
 
+        priority = await self._resolve_priority(user_id)
         task = GenerationTask(
             id=task_id,
             user_id=user_id,
@@ -709,6 +724,7 @@ class GenerationService:
             creation_session_id=session_id,
             task_type=task_type,
             status=TaskStatus.QUEUED,
+            priority=priority,
             prompt="",
             aspect_ratio=aspect_ratio,
             model_id=model.id if model is not None else None,
@@ -857,6 +873,7 @@ class GenerationService:
             "provider_model_ref": model.provider_model_ref,
         }
 
+        priority = await self._resolve_priority(user_id)
         task = GenerationTask(
             id=task_id,
             user_id=user_id,
@@ -864,6 +881,7 @@ class GenerationService:
             creation_session_id=session_id,
             task_type=task_type,
             status=TaskStatus.QUEUED,
+            priority=priority,
             prompt=prompt or "",
             aspect_ratio=aspect_ratio,
             model_id=model.id,
@@ -1771,6 +1789,16 @@ class GenerationService:
         if generate_audio is not None:
             generate_audio = bool(generate_audio)
         template_id = params.get("template_id")
+        queue_position = None
+        if task.status == TaskStatus.QUEUED:
+            ahead_count = await self._repo.count_queued_ahead(
+                task_id=task.id,
+                provider=task.provider,
+                priority=task.priority,
+                created_at=task.created_at,
+            )
+            queue_position = ahead_count + 1
+
         return GenerationTaskResponse(
             job_id=task.id,
             session_id=task.creation_session_id,
@@ -1788,9 +1816,66 @@ class GenerationService:
             result_urls=result_urls,
             input_url=input_url,
             failure_code=task.failure_code,
+            queue_position=queue_position,
             created_at=task.created_at,
             completed_at=task.completed_at,
         )
+
+    async def dispatch_pending_jobs(self) -> list[str]:
+        """
+        1. Timeout check: Expire QUEUED jobs older than 20 minutes (1200s), release reserved credits.
+        2. RunningHub: Check active running jobs (PROCESSING or SUBMITTING). Fill available slots (max 5) with highest priority QUEUED jobs.
+        3. Pollo: Dispatch all QUEUED jobs.
+        Returns list of dispatched task IDs.
+        """
+        dispatched_ids: list[str] = []
+
+        # 1. Timeout check (20 minutes queue limit)
+        cutoff = utc_now() - timedelta(minutes=20)
+        expired_tasks = await self._repo.fetch_expired_queued_tasks(cutoff)
+        for task in expired_tasks:
+            task.status = TaskStatus.EXPIRED
+            task.failure_code = "QUEUE_TIMEOUT"
+            task.failure_detail = "Task queued for over 20 minutes without processing"
+            task.completed_at = utc_now()
+            if task.credits_reserved > 0:
+                await self._credits.release_reservation(task_id=task.id)
+            if task.task_type in _FAST_QUOTA_TASK_TYPES:
+                await self._entitlements.refund_fast_quota(
+                    user_id=task.user_id, visitor_id=task.visitor_id
+                )
+            logger.info("Task queue timeout expired task_id=%s", task.id)
+
+        # 2. Dispatch RunningHub (Max 5 concurrent active)
+        active_rh = await self._repo.count_active_by_provider(GenerationProvider.RUNNINGHUB)
+        available_rh = max(0, 5 - active_rh)
+        if available_rh > 0:
+            rh_tasks = await self._repo.fetch_next_queued_tasks(
+                GenerationProvider.RUNNINGHUB, limit=available_rh
+            )
+            for task in rh_tasks:
+                task.status = TaskStatus.SUBMITTING
+                dispatched_ids.append(task.id)
+
+        # 3. Dispatch Pollo (No provider concurrency limit)
+        pollo_tasks = await self._repo.fetch_all_queued_tasks_by_provider(GenerationProvider.POLLO)
+        for task in pollo_tasks:
+            task.status = TaskStatus.SUBMITTING
+            dispatched_ids.append(task.id)
+
+        if expired_tasks or dispatched_ids:
+            await self._repo.session.commit()
+
+        # Enqueue workers for dispatched tasks
+        if dispatched_ids:
+            from app.workers.tasks import run_generation_job
+            for task_id in dispatched_ids:
+                try:
+                    run_generation_job.send(task_id)
+                except Exception:
+                    logger.exception("Failed to send dispatched job to worker task_id=%s", task_id)
+
+        return dispatched_ids
 
     async def _result_urls_for_client(self, task: GenerationTask) -> list[str] | None:
         """Prefer short-lived S3 presigned URL; fall back to provider temporary URL."""

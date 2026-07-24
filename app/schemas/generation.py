@@ -26,6 +26,7 @@ class GenerationTaskResponse(BaseModel):
     result_urls: list[str] | None = None
     input_url: str | None = None
     failure_code: str | None = None
+    queue_position: int | None = None
     created_at: datetime | None = None
     completed_at: datetime | None = None
 
